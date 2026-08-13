@@ -1,0 +1,175 @@
+/* 页面样式：构建居中的可爱按钮舞台以及点击后的上浮文字。 */
+:root {
+  color-scheme: light;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: #fff1d8;
+  color: #9a5f4d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 20% 18%, rgb(255 255 255 / 42%) 0 5%, transparent 13%),
+    radial-gradient(circle at 80% 75%, rgb(255 221 233 / 48%) 0 6%, transparent 16%),
+    #fff1d8;
+}
+
+button {
+  font: inherit;
+}
+
+.page-shell {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: clamp(20px, 5vw, 64px);
+}
+
+.button-stage {
+  position: relative;
+  display: grid;
+  width: min(82vw, 620px);
+  place-items: center;
+}
+
+.hint {
+  position: absolute;
+  top: -2.5rem;
+  margin: 0;
+  color: #b97d68;
+  font-size: clamp(0.9rem, 2.4vw, 1.05rem);
+  letter-spacing: 0.14em;
+  opacity: 0.78;
+  animation: hint-breathe 2.2s ease-in-out infinite;
+}
+
+.miss-button {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 44%;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: filter 160ms ease, transform 100ms ease;
+}
+
+.miss-button img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 7%;
+  user-select: none;
+}
+
+.miss-button:hover {
+  filter: drop-shadow(0 14px 18px rgb(164 105 79 / 16%));
+  transform: translateY(-3px);
+}
+
+.miss-button:active,
+.miss-button.is-pressed {
+  transform: translateY(2px) scale(0.965);
+}
+
+.miss-button:focus-visible {
+  box-shadow: 0 0 0 5px #fff1d8, 0 0 0 9px #c98773;
+}
+
+.float-layer {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.floating-message {
+  position: absolute;
+  bottom: 62%;
+  left: 50%;
+  width: max-content;
+  max-width: 90vw;
+  padding: 0.52em 0.9em;
+  border: 1px solid rgb(255 255 255 / 76%);
+  border-radius: 999px;
+  background: rgb(255 248 238 / 88%);
+  box-shadow: 0 8px 24px rgb(172 104 78 / 12%);
+  color: #a65f50;
+  font-size: clamp(1rem, 3.5vw, 1.35rem);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  transform: translate(-50%, 0);
+  animation: float-away 1.65s ease-out forwards;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes float-away {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 12px) scale(0.94) rotate(var(--tilt));
+  }
+  14% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -150px) scale(1.04) rotate(var(--tilt));
+  }
+}
+
+@keyframes hint-breathe {
+  0%, 100% {
+    opacity: 0.58;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateY(-4px);
+  }
+}
+
+@media (max-height: 620px) {
+  .button-stage {
+    width: min(70vh, 82vw);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hint,
+  .floating-message {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+  }
+
+  .miss-button {
+    transition: none;
+  }
+}

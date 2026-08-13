@@ -1,0 +1,39 @@
+# 生产编排：Caddy 负责域名 HTTPS，Gin 应用只在容器网络内提供 HTTP。
+services:
+  app:
+    platform: linux/amd64
+    build:
+      context: .
+      args:
+        APP_VERSION: V0.0.2_20260814
+    image: fluffy-cupcake:V0.0.2_20260814
+    restart: unless-stopped
+    environment:
+      APP_ADDR: 0.0.0.0:4819
+      APP_MODE: release
+    networks:
+      - web
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - web
+
+networks:
+  web:
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,13 @@
+# 导出的部署产物
+/dist/
+
+# 本地配置与编辑器文件
+.env
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# 测试产物
+coverage.out
+*.test

@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+.DS_Store
+.idea
+.vscode
+bin
+dist
+coverage.out
+*.test
+docs/record/context-archives

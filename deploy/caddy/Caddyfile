@@ -1,0 +1,11 @@
+# Caddy 自动申请和续期 fluffy-cupcake.cn 的 TLS 证书。
+fluffy-cupcake.cn {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	reverse_proxy app:4819
+}

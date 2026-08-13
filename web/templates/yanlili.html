@@ -1,0 +1,27 @@
+{{define "yanlili.html"}}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="按一下可爱按钮，想哥哥加一。">
+  <meta name="theme-color" content="#fff1d8">
+  <title>想哥哥按钮</title>
+  <link rel="stylesheet" href="/assets/app.css?v={{.Version}}">
+  <script src="/assets/app.js?v={{.Version}}" defer></script>
+</head>
+<body>
+  <main class="page-shell">
+    <section class="button-stage" aria-labelledby="page-title">
+      <h1 id="page-title" class="visually-hidden">想哥哥按钮</h1>
+      <p class="hint" aria-hidden="true">点一下试试</p>
+      <div id="float-layer" class="float-layer" aria-hidden="true"></div>
+      <button id="miss-button" class="miss-button" type="button" data-message="按按钮，想哥哥+1" aria-label="按按钮，想哥哥加一">
+        <img src="/assets/miss-button.gif?v={{.Version}}" alt="可爱的纸杯蛋糕按钮" width="800" height="800" draggable="false">
+      </button>
+      <p id="live-message" class="visually-hidden" aria-live="polite"></p>
+    </section>
+  </main>
+</body>
+</html>
+{{end}}
