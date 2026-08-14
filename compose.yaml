@@ -1,16 +1,61 @@
-# 生产编排：Caddy 负责域名 HTTPS，Gin 应用只在容器网络内提供 HTTP。
+# 生产编排：MySQL 持久化数据，Gin 提供业务服务，Caddy 负责公网 HTTPS。
 services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-fluffy_cupcake}
+      MYSQL_USER: ${MYSQL_USER:-fluffy_cupcake}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 配置 MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 配置 MYSQL_ROOT_PASSWORD}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    networks:
+      - web
+
+  migrate:
+    image: migrate/migrate:v4.19.1
+    profiles: ["tools"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    entrypoint:
+      - migrate
+      - -path=/migrations
+      - -database
+      - mysql://${MYSQL_USER:-fluffy_cupcake}:${MYSQL_PASSWORD:?请在 .env 配置 MYSQL_PASSWORD}@tcp(mysql:3306)/${MYSQL_DATABASE:-fluffy_cupcake}
+    command: ["up"]
+    networks:
+      - web
+
   app:
     platform: linux/amd64
     build:
       context: .
       args:
-        APP_VERSION: V0.0.2_20260814
-    image: fluffy-cupcake:V0.0.2_20260814
+        APP_VERSION: V0.0.6_20260815
+    image: fluffy-cupcake:V0.0.6_20260815
     restart: unless-stopped
     environment:
       APP_ADDR: 0.0.0.0:4819
       APP_MODE: release
+      DATABASE_DSN: ${MYSQL_USER:-fluffy_cupcake}:${MYSQL_PASSWORD:?请在 .env 配置 MYSQL_PASSWORD}@tcp(mysql:3306)/${MYSQL_DATABASE:-fluffy_cupcake}
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 配置 JWT_SECRET}
+      JWT_EXPIRE: ${JWT_EXPIRE:-24h}
+    depends_on:
+      mysql:
+        condition: service_healthy
     networks:
       - web
 
@@ -35,5 +80,6 @@ networks:
   web:
 
 volumes:
+  mysql_data:
   caddy_data:
   caddy_config:

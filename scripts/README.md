@@ -2,7 +2,7 @@
 
 ## `dev.sh`
 
-以本地开发默认配置启动服务：`APP_ADDR=0.0.0.0:4819`、`APP_MODE=debug`。调用方设置的同名环境变量优先。
+若存在 `.env`，先导入 MySQL 与 JWT 配置，再以本地默认值启动服务：`APP_ADDR=0.0.0.0:4819`、`APP_MODE=debug`。调用方设置的同名环境变量优先。
 
 ```bash
 ./scripts/dev.sh
@@ -10,7 +10,7 @@
 
 ## `build.sh`
 
-通过 Dockerfile 构建 Linux 容器镜像，不生成本机二进制。默认平台为 `linux/amd64`，默认镜像为 `fluffy-cupcake:V0.0.2_20260814`。
+通过 Dockerfile 构建 Linux 容器镜像，不生成本机二进制。默认平台为 `linux/amd64`，默认镜像为 `fluffy-cupcake:V0.0.6_20260815`。
 
 ```bash
 ./scripts/build.sh

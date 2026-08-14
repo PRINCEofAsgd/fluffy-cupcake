@@ -3,6 +3,7 @@
 
 # 本地配置与编辑器文件
 .env
+.env.prod
 .DS_Store
 .idea/
 .vscode/

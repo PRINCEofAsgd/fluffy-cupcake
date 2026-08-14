@@ -9,6 +9,7 @@
 - 说明文档 [README.md](README.md)
 - 结构文档 [docs/structures/repository-structure.md](docs/structures/repository-structure.md)
 - 调用链文档 [docs/structures/call-chains.md](docs/structures/call-chains.md)
+- 数据库开发规范文档 [docs/foundation/db-dev-rules.md](docs/foundation/db-dev-rules.md)
 - 数据库结构文档 [docs/structures/database-structure.md](docs/structures/database-structure.md)
 - 脚本文档 [scripts/README.md](scripts/README.md)
 - 开发文档 [docs/user/development.md](docs/user/development.md)

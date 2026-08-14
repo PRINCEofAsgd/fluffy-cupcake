@@ -12,24 +12,48 @@ import (
 	"time"
 
 	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/config"
+	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/database"
 	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/healthcheck"
 	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/server"
 )
 
 // main 加载配置、启动 HTTP 服务，并在收到系统信号后完成优雅退出。
 func main() {
-	cfg := config.Load()
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	if err := run(logger); err != nil {
+		logger.Error("服务退出", "error", err)
+		os.Exit(1)
+	}
+}
+
+// run 管理全部可关闭资源，使异常返回路径也会执行数据库连接池清理。
+func run(logger *slog.Logger) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
 		if err := healthcheck.Run(cfg.Address); err != nil {
-			os.Exit(1)
+			return err
 		}
-		return
+		return nil
 	}
+	if err := cfg.ValidateServer(); err != nil {
+		return err
+	}
+	db, err := database.Open(context.Background(), cfg.Database)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			logger.Error("关闭数据库连接池失败", "error", err)
+		}
+	}()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	httpServer := &http.Server{
 		Addr:              cfg.Address,
-		Handler:           server.NewRouter(cfg),
+		Handler:           server.NewRouter(cfg, db),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
@@ -48,8 +72,7 @@ func main() {
 	select {
 	case err := <-serverErrors:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("HTTP 服务异常退出", "error", err)
-			os.Exit(1)
+			return err
 		}
 	case <-shutdownSignal.Done():
 		logger.Info("正在关闭 HTTP 服务")
@@ -58,7 +81,7 @@ func main() {
 	shutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownContext); err != nil {
-		logger.Error("HTTP 服务未能正常关闭", "error", err)
-		os.Exit(1)
+		return err
 	}
+	return nil
 }

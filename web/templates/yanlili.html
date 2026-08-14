@@ -12,14 +12,57 @@
 </head>
 <body>
   <main class="page-shell">
-    <section class="button-stage" aria-labelledby="page-title">
-      <h1 id="page-title" class="visually-hidden">想哥哥按钮</h1>
-      <p class="hint" aria-hidden="true">点一下试试</p>
-      <div id="float-layer" class="float-layer" aria-hidden="true"></div>
-      <button id="miss-button" class="miss-button" type="button" data-message="按按钮，想哥哥+1" aria-label="按按钮，想哥哥加一">
-        <img src="/assets/miss-button.gif?v={{.Version}}" alt="可爱的纸杯蛋糕按钮" width="800" height="800" draggable="false">
-      </button>
-      <p id="live-message" class="visually-hidden" aria-live="polite"></p>
+    <section id="app-panel" class="app-panel" aria-label="想哥哥按钮与统计">
+      <header class="user-bar">
+        <span id="auth-status">未登录：本次点击只显示页面效果</span>
+        <div class="auth-actions">
+          <button id="login-button" type="button" aria-expanded="false" aria-controls="login-panel">登录</button>
+          <button id="logout-button" type="button" hidden>退出</button>
+        </div>
+      </header>
+
+      <section id="login-panel" class="login-panel" aria-labelledby="login-title" hidden>
+        <div class="login-heading">
+          <h2 id="login-title">登录并记录想念</h2>
+          <button id="close-login-button" class="quiet-button" type="button" aria-label="关闭登录表单">关闭</button>
+        </div>
+        <p>登录后才会保存点击并展示共同记录。</p>
+        <form id="login-form" class="login-form">
+          <label for="username">用户名</label>
+          <input id="username" name="username" type="text" autocomplete="username" maxlength="64" required>
+          <label for="password">密码</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <button type="submit">登录</button>
+        </form>
+        <p id="login-message" class="form-message" role="alert"></p>
+      </section>
+
+      <section class="button-stage" aria-labelledby="page-title">
+        <h1 id="page-title" class="visually-hidden">想哥哥按钮</h1>
+        <p class="hint" aria-hidden="true">点一下试试</p>
+        <div id="float-layer" class="float-layer" aria-hidden="true"></div>
+        <button id="miss-button" class="miss-button" type="button" data-message="按按钮，想哥哥+1" aria-label="按按钮，想哥哥加一">
+          <img src="/assets/miss-button.gif?v={{.Version}}" alt="可爱的纸杯蛋糕按钮" width="800" height="800" draggable="false">
+        </button>
+        <p id="live-message" class="visually-hidden" aria-live="polite"></p>
+      </section>
+      <aside id="stats-panel" class="stats-panel" aria-labelledby="stats-title" hidden>
+        <div class="stats-heading">
+          <h2 id="stats-title">共同的想念记录</h2>
+          <span id="sync-status" role="status">已同步</span>
+        </div>
+        <p class="total-stat">总点击 <strong id="total-count">0</strong> 次</p>
+        <div class="stats-grid">
+          <section>
+            <h3>每日次数（UTC）</h3>
+            <ul id="daily-counts"><li>还没有记录</li></ul>
+          </section>
+          <section>
+            <h3>最近点击分钟</h3>
+            <ul id="click-minutes"><li>还没有记录</li></ul>
+          </section>
+        </div>
+      </aside>
     </section>
   </main>
 </body>

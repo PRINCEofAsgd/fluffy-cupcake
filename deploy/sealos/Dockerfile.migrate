@@ -1,0 +1,13 @@
+# Sealos 一次性迁移镜像：仅包含官方 migrate 工具、SQL 文件和安全入口脚本。
+FROM migrate/migrate:v4.19.1
+
+COPY migrations /migrations
+COPY --chmod=0555 deploy/sealos/migrate-entrypoint.sh /usr/local/bin/fluffy-cupcake-migrate
+
+# 目录需要只读遍历权限，SQL 本身保持不可修改。
+RUN chmod 0555 /migrations && chmod 0444 /migrations/*.sql
+
+# Migration 只需要读取 SQL 并连接数据库，不需要容器内 root 权限。
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/fluffy-cupcake-migrate"]
+CMD ["up"]
