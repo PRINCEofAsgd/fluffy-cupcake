@@ -160,7 +160,8 @@
   const loadStats = async () => {
     if (!currentUser || !currentBinding.bound) return;
     try {
-      const stats = await requestJSON(`/api/yanlili/clicks/stats?direction=${statsDirection}`);
+      const utcOffsetMinutes = -new Date().getTimezoneOffset();
+      const stats = await requestJSON(`/api/yanlili/clicks/stats?direction=${statsDirection}&utc_offset_minutes=${utcOffsetMinutes}`);
       if (statsTitle instanceof HTMLElement) statsTitle.textContent = statsDirection === "mine" ? "我想ta" : "ta想我";
       if (totalCount instanceof HTMLElement) totalCount.textContent = String(stats.total_count ?? 0);
       renderList(dailyCounts, stats.daily_counts ?? [], (item) => `${item.date}：${item.count} 次`);
@@ -286,6 +287,23 @@
       const meta = document.createElement("p");
       meta.textContent = `${statusText[letter.status] || letter.status} · ${new Date(letter.created_at).toLocaleString()}`;
       card.append(heading, meta);
+
+      // 解绑子状态保留最近一次申请及处理结果，双方看到同一事实但使用各自视角的提示。
+      const requesterName = letter.unbind_requested_by === currentUser.id ? "你" : partnerName;
+      const responderName = letter.unbind_responded_by === currentUser.id ? "你" : partnerName;
+      const unbindFeedback = {
+        pending: `${requesterName}已发起解绑申请，等待处理`,
+        cancelled: `${requesterName}发起的解绑申请已由${responderName}取消`,
+        rejected: `${requesterName}发起的解绑申请已由${responderName}拒绝`,
+        accepted: `${requesterName}发起的解绑申请已由${responderName}接受，双方已解绑`,
+        direct: "因一方连续30天未登录，已直接双向解绑",
+      }[letter.unbind_status];
+      if (unbindFeedback) {
+        const feedback = document.createElement("p");
+        feedback.className = "unbind-feedback";
+        feedback.textContent = unbindFeedback;
+        card.append(feedback);
+      }
       const actions = document.createElement("div");
       actions.className = "letter-actions";
       const addAction = (action, label) => {
@@ -297,11 +315,13 @@
         actions.append(actionButton);
       };
       if (letter.status === "pending" && !mineIsInviter) addAction("accept-binding", "接受绑定");
-      if (letter.status === "active" && !letter.unbind_requested_by) addAction("request-unbind", "发起解绑邀请");
-      if (letter.status === "active" && letter.unbind_requested_by && letter.unbind_requested_by !== currentUser.id) addAction("accept-unbind", "接受解绑");
-      if (letter.status === "active") addAction("direct-unbind", "对方30天未登录，直接解绑");
-      if (letter.status === "active" && letter.unbind_requested_by === currentUser.id) {
-        const waiting = document.createElement("span"); waiting.textContent = "等待对方接受解绑"; actions.append(waiting);
+      if (letter.status === "active" && letter.unbind_status !== "pending") addAction("request-unbind", "解绑");
+      if (letter.status === "active" && letter.unbind_status === "pending" && letter.unbind_requested_by !== currentUser.id) {
+        addAction("accept-unbind", "接受解绑");
+        addAction("reject-unbind", "拒绝解绑");
+      }
+      if (letter.status === "active" && letter.unbind_status === "pending" && letter.unbind_requested_by === currentUser.id) {
+        addAction("cancel-unbind", "取消解绑申请");
       }
       if (actions.childNodes.length) card.append(actions);
       inboxList.append(card);
@@ -339,6 +359,35 @@
     if (pageStatus instanceof HTMLElement) pageStatus.textContent = `第 ${data.page} / ${Math.max(data.total_pages, 1)} 页`;
     if (previousPage instanceof HTMLButtonElement) previousPage.disabled = data.page <= 1;
     if (nextPage instanceof HTMLButtonElement) nextPage.disabled = data.total_pages === 0 || data.page >= data.total_pages;
+  };
+
+  // confirmUnbindRequest 在发送任何解绑请求前连续取得三次明确确认。
+  const confirmUnbindRequest = () => {
+    const prompts = [
+      "确认要发起解绑吗？",
+      "解绑后将停止记录当前陪伴关系，是否继续？",
+      "请最后确认：确定要解绑吗？",
+    ];
+    return prompts.every((message) => window.confirm(message));
+  };
+
+  // requestUnbind 只调用统一后端入口；30 天未登录时由服务端要求第四次确认。
+  const requestUnbind = async (bindingID) => {
+    const endpoint = `/api/companion/bindings/${bindingID}/unbind-request`;
+    let result = await requestJSON(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ confirm_inactive: false }),
+    });
+    if (result.action !== "inactive_confirmation_required") return result;
+    if (!window.confirm(`${result.message}，是否确认？`)) {
+      return { action: "cancelled", message: "已取消直接解绑" };
+    }
+    await flushClicks();
+    result = await requestJSON(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ confirm_inactive: true }),
+    });
+    return result;
   };
 
   button.addEventListener("click", createFloatingMessage);
@@ -412,24 +461,29 @@
   });
 
   inboxList?.addEventListener("click", async (event) => {
-	if (!(event.target instanceof Element)) return;
-	const actionButton = event.target.closest("button[data-action]");
+    if (!(event.target instanceof Element)) return;
+    const actionButton = event.target.closest("button[data-action]");
     if (!(actionButton instanceof HTMLButtonElement)) return;
     const endpoints = {
       "accept-binding": "accept",
-      "request-unbind": "unbind-request",
       "accept-unbind": "unbind-accept",
-      "direct-unbind": "unbind-direct",
+      "cancel-unbind": "unbind-cancel",
+      "reject-unbind": "unbind-reject",
     };
-    const endpoint = endpoints[actionButton.dataset.action];
-    if (!endpoint) return;
+    const action = actionButton.dataset.action;
+    if (action === "request-unbind" && !confirmUnbindRequest()) return;
+    const endpoint = endpoints[action];
+    if (action !== "request-unbind" && !endpoint) return;
     actionButton.disabled = true;
     if (inboxMessage instanceof HTMLElement) inboxMessage.textContent = "正在处理…";
     try {
-      if (endpoint === "unbind-accept" || endpoint === "unbind-direct") await flushClicks();
-      const result = await requestJSON(`/api/companion/bindings/${actionButton.dataset.id}/${endpoint}`, { method: "POST" });
+      if (endpoint === "unbind-accept") await flushClicks();
+      const result = action === "request-unbind"
+        ? await requestUnbind(actionButton.dataset.id)
+        : await requestJSON(`/api/companion/bindings/${actionButton.dataset.id}/${endpoint}`, { method: "POST" });
       if (inboxMessage instanceof HTMLElement) inboxMessage.textContent = result.message;
-      await refreshCompanionViews();
+      if (result.action !== "cancelled") await refreshCompanionViews();
+      else actionButton.disabled = false;
     } catch (error) {
       if (inboxMessage instanceof HTMLElement) inboxMessage.textContent = error.message;
       actionButton.disabled = false;

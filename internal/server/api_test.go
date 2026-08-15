@@ -87,14 +87,14 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 	}
 
 	expectActiveBinding(mock, 1, 9, 2, "partner", "亲爱的")
-	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(click_count\\), 0\\)").WithArgs(int64(9), int64(1), int64(2), "yanlili").
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(click_count\\), 0\\)").WithArgs(int64(1), int64(2), "yanlili").
 		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(6)))
-	mock.ExpectQuery("SELECT DATE_FORMAT\\(click_date").WithArgs(int64(9), int64(1), int64(2), "yanlili", 8).
+	mock.ExpectQuery("SELECT DATE_FORMAT\\(DATE_ADD\\(minute_bucket").WithArgs(480, int64(1), int64(2), "yanlili", 8).
 		WillReturnRows(sqlmock.NewRows([]string{"click_date", "count"}).AddRow("2026-08-15", int64(6)))
-	mock.ExpectQuery("SELECT minute_bucket, click_count").WithArgs(int64(9), int64(1), int64(2), "yanlili", 8).
+	mock.ExpectQuery("SELECT minute_bucket, SUM\\(click_count\\)").WithArgs(int64(1), int64(2), "yanlili", 8).
 		WillReturnRows(sqlmock.NewRows([]string{"minute_bucket", "count"}).AddRow(time.Date(2026, 8, 15, 3, 27, 0, 0, time.UTC), int64(6)))
 	stats := httptest.NewRecorder()
-	statsRequest := httptest.NewRequest(http.MethodGet, "/api/yanlili/clicks/stats", nil)
+	statsRequest := httptest.NewRequest(http.MethodGet, "/api/yanlili/clicks/stats?utc_offset_minutes=480", nil)
 	statsRequest.AddCookie(authCookie)
 	router.ServeHTTP(stats, statsRequest)
 	if stats.Code != http.StatusOK || !bytes.Contains(stats.Body.Bytes(), []byte(`"total_count":6`)) {

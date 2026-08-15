@@ -27,8 +27,9 @@
 3. `CompanionRepository.CreateInvitation` 锁定双方用户、确认双方都无活跃绑定，再创建 `pending` 信件；信件没有删除接口。
 4. 收信人在同一信件上接受后，Repository 在事务中向 `companion_active_memberships` 为双方各写一行；`PRIMARY KEY(user_id)` 从数据库层保证每个用户最多一个活跃绑定，同时把冲突的其他待处理信件标记为 `superseded`。
 5. 绑定任一方可修改自己的私有备注；页面点击宾语优先显示备注，否则显示对象用户名。
-6. 一方在原信件写入 `unbind_requested_by`，只有另一方能接受；接受时事务删除双方当前占位并把原信件更新为 `ended/mutual`，信件和点击历史仍保留。
-7. 直接解绑会在事务内读取对方 `last_login_at`（空值退回 `created_at`）；只有不晚于服务端当前时间减 30 天才结束为 `ended/inactive`。
+6. 页面只显示一个“解绑”入口，连续三次 `confirm` 后调用统一 `unbind-request`；Repository 锁定当前信件和对方用户，并读取 `last_login_at`（空值退回 `created_at`）。
+7. 对方 30 天内登录过时，同一事务写入申请字段并把 `unbind_status` 设为 `pending`；发起方可调用 `unbind-cancel`，另一方可调用 `unbind-reject` 或 `unbind-accept`。取消/拒绝只原子结束本次申请，关系保持 `active`，双方收件箱显示同一处理结果，并可之后在原信件重新申请。
+8. 对方已连续 30 天未登录时先返回 `inactive_confirmation_required`，页面第四次确认后重发同一接口，服务端重新判定并结束为 `ended/inactive`；此时子状态为 `direct`。接受普通申请结束为 `ended/mutual` 和 `accepted`。信件和点击历史始终保留。
 
 ## JWT 鉴权链路
 
@@ -48,8 +49,8 @@
 
 ## 点击统计读取链路
 
-1. 页面以 `direction=mine|theirs` 请求受保护的 `GET /api/yanlili/clicks/stats`，⇄ 图标在“我想ta”与“ta想我”之间切换。
-2. Service 根据当前绑定把方向解析为发起用户和目标用户，Repository 查询方向总数，并分别按时间倒序 `LIMIT 8` 返回“每日想念”和“最近想念”。
+1. 页面以 `direction=mine|theirs` 和浏览器 `utc_offset_minutes` 请求受保护的 `GET /api/yanlili/clicks/stats`，⇄ 图标在“我想ta”与“ta想我”之间切换。
+2. Service 根据当前绑定把方向解析为发起用户和目标用户；Repository 按用户对合并迁移旧行及历次绑定，查询方向总数，并分别倒序 `LIMIT 8` 返回“每日想念”和“最近想念”。每日分组在 UTC 分钟上叠加浏览器偏移，和明细本地时间使用同一日界线。
 3. “详细记录”先通过 `GET /api/companion/partners` 取得历次已接受绑定的对象，再请求 `GET /api/yanlili/clicks/details?partner_id=&page=`。
 4. 详细查询按用户对读取两个方向，把不同绑定实例和只有对象 ID 的迁移旧数据按分钟合并后 `UNION ALL`，固定 `LIMIT 20 OFFSET ...` 返回分页结果；响应不返回绑定实例 ID。
 5. Handler 返回 RFC3339 时间 JSON；浏览器只在显示分钟时转换为本地时间。

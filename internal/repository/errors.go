@@ -14,6 +14,4 @@ var (
 	ErrInvalidBindingState = errors.New("当前绑定状态不允许该操作")
 	// ErrForbidden 表示当前用户不是该信件允许操作的一方。
 	ErrForbidden = errors.New("无权操作该绑定信件")
-	// ErrPartnerRecentlyActive 表示对方最近 30 天内登录过，不能直接解绑。
-	ErrPartnerRecentlyActive = errors.New("对方最近 30 天内登录过")
 )

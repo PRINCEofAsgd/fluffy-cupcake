@@ -30,6 +30,10 @@ type updateCompanionNoteRequest struct {
 	Note string `json:"note"`
 }
 
+type requestUnbindRequest struct {
+	ConfirmInactive bool `json:"confirm_inactive"`
+}
+
 type inboxBindingResponse struct {
 	model.CompanionBinding
 	MyNote string `json:"my_note"`
@@ -114,18 +118,29 @@ func (h *CompanionHandler) UpdateNote(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "备注已修改"})
 }
 
-// RequestUnbind 在同一封信中发起解绑邀请。
+// RequestUnbind 通过单一入口完成活跃度判定、普通申请或额外确认后的直接解绑。
 func (h *CompanionHandler) RequestUnbind(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	bindingID, ok := bindingIDParam(c)
 	if !ok {
 		return
 	}
-	if err := h.companions.RequestUnbind(c.Request.Context(), userID, bindingID); err != nil {
+	var request requestUnbindRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "解绑确认参数无效"})
+		return
+	}
+	action, err := h.companions.RequestUnbind(c.Request.Context(), userID, bindingID, request.ConfirmInactive)
+	if err != nil {
 		h.writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "解绑邀请已发送"})
+	messages := map[model.UnbindAction]string{
+		model.UnbindActionRequestSent:                  "解绑申请已发送",
+		model.UnbindActionInactiveConfirmationRequired: "对方已连续30天未登录，将直接解绑",
+		model.UnbindActionDirectlyEnded:                "已直接双向解绑",
+	}
+	c.JSON(http.StatusOK, gin.H{"action": action, "message": messages[action]})
 }
 
 // AcceptUnbind 接受另一方在同一封信中发起的解绑邀请。
@@ -142,18 +157,32 @@ func (h *CompanionHandler) AcceptUnbind(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "已完成双向解绑"})
 }
 
-// DirectUnbind 在对方已连续 30 天未登录时执行直接双向解绑。
-func (h *CompanionHandler) DirectUnbind(c *gin.Context) {
+// CancelUnbind 取消当前用户自己发起且尚未处理的解绑申请。
+func (h *CompanionHandler) CancelUnbind(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	bindingID, ok := bindingIDParam(c)
 	if !ok {
 		return
 	}
-	if err := h.companions.DirectUnbind(c.Request.Context(), userID, bindingID); err != nil {
+	if err := h.companions.CancelUnbind(c.Request.Context(), userID, bindingID); err != nil {
 		h.writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "已直接双向解绑"})
+	c.JSON(http.StatusOK, gin.H{"message": "已取消解绑申请"})
+}
+
+// RejectUnbind 拒绝对方在同一封信中发起且尚未处理的解绑申请。
+func (h *CompanionHandler) RejectUnbind(c *gin.Context) {
+	userID, _ := middleware.UserID(c)
+	bindingID, ok := bindingIDParam(c)
+	if !ok {
+		return
+	}
+	if err := h.companions.RejectUnbind(c.Request.Context(), userID, bindingID); err != nil {
+		h.writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已拒绝解绑"})
 }
 
 // Partners 返回详细记录选择器所需的历次绑定对象。
@@ -186,7 +215,7 @@ func (h *CompanionHandler) writeError(c *gin.Context, err error) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 	case errors.Is(err, repository.ErrForbidden):
 		c.JSON(http.StatusForbidden, gin.H{"message": err.Error()})
-	case errors.Is(err, repository.ErrAlreadyBound), errors.Is(err, repository.ErrInvalidBindingState), errors.Is(err, repository.ErrPartnerRecentlyActive):
+	case errors.Is(err, repository.ErrAlreadyBound), errors.Is(err, repository.ErrInvalidBindingState):
 		c.JSON(http.StatusConflict, gin.H{"message": err.Error()})
 	default:
 		slog.Error("陪伴绑定操作失败", "error", err)

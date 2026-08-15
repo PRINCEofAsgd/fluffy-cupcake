@@ -18,7 +18,7 @@
 make build
 ```
 
-默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.7_20260815`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像采用多阶段交叉编译和无基础系统的 `scratch` 运行阶段，最终仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
+默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.9_20260816`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像采用多阶段交叉编译和无基础系统的 `scratch` 运行阶段，最终仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
 
 ## 启动服务
 
@@ -60,10 +60,12 @@ ORDER BY TABLE_NAME;
 
 必须根据检查结果继续，不能在未知状态下重复执行建表 SQL：
 
-- 全部业务表均不存在：先建立空的 `schema_migrations`；依次执行 `000001`、`000002`、`000003` 的 Up SQL，每一步明确成功后再将版本登记为 1、2、3，最终为 `version=3, dirty=0`。
-- 已有 `users`、`button_click_minutes` 且 `version=2, dirty=0`：暂停应用写入，完整执行 `migrations/000003_add_companion_bindings.up.sql`；成功后才更新为 `version=3, dirty=0`。该 Migration 原地升级点击表，不删除旧点击。若已明确旧记录对象，应先创建该用户，再只补旧行的 `target_user_id` 并保持 `companion_binding_id = NULL`；不要为了迁移伪造绑定信件。
+- 全部业务表均不存在：先建立空的 `schema_migrations`；依次执行 `000001` 至 `000005` 的 Up SQL，每一步明确成功后再登记对应版本，最终为 `version=5, dirty=0`。
+- 已有 `users`、`button_click_minutes` 且 `version=2, dirty=0`：暂停应用写入，依次执行 `000003`、`000004` 和 `000005`；`000003` 原地升级点击表，不删除旧点击。若已明确旧记录对象，应先创建该用户，再只补旧行的 `target_user_id` 并保持 `companion_binding_id = NULL`；不要为了迁移伪造绑定信件。
+- 五张业务表完整且 `version=3, dirty=0`：依次执行 `000004` 和 `000005`，最终登记为 `version=5, dirty=0`。
+- 五张业务表完整且 `version=4, dirty=0`：只执行 `migrations/000005_add_unbind_request_states.up.sql`，成功后登记为 `version=5, dirty=0`。该步骤只增加解绑状态与反馈字段并回填现有状态，不修改绑定主状态、当前占位或想念记录。
 - 只存在其中部分表，或 `schema_migrations` 的 `dirty` 为 `1`：先核对现有表结构，再补齐缺失部分；不要先修改版本号。
-- 上述五张表均存在：核对 `SELECT version, dirty FROM schema_migrations;`；期望仅一行 `version=3`、`dirty=0`。
+- 上述五张表均存在：核对 `SELECT version, dirty FROM schema_migrations;`；当前期望仅一行 `version=5`、`dirty=0`。
 
 Database Studio 操作不需要公开 MySQL 地址，也不需要把 DSN 或密码粘贴到 SQL、YAML、命令历史和聊天记录。建表和迁移版本登记完成后，生产镜像因采用 `scratch` 且只包含服务端二进制，不能在容器内运行本地 `create-user` CLI。可在 macOS Terminal 使用系统自带的 `htpasswd` 隐藏读取登录密码并生成与服务端兼容的 bcrypt cost 10 哈希：
 

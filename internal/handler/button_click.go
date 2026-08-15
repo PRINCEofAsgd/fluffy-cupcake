@@ -57,9 +57,14 @@ func (h *ButtonClickHandler) AddClicks(c *gin.Context) {
 func (h *ButtonClickHandler) Stats(c *gin.Context) {
 	userID, _ := middleware.UserID(c)
 	direction := c.DefaultQuery("direction", "mine")
-	stats, err := h.clicks.Stats(c.Request.Context(), userID, direction)
+	utcOffsetMinutes, err := strconv.Atoi(c.DefaultQuery("utc_offset_minutes", "0"))
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidDirection) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": service.ErrInvalidTimezoneOffset.Error()})
+		return
+	}
+	stats, err := h.clicks.Stats(c.Request.Context(), userID, direction, utcOffsetMinutes)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidDirection) || errors.Is(err, service.ErrInvalidTimezoneOffset) {
 			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 			return
 		}

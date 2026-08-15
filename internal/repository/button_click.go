@@ -41,29 +41,29 @@ func (r *ButtonClickRepository) AddClicks(ctx context.Context, bindingID, userID
 	return nil
 }
 
-// GetTotalCount 统计一个绑定关系中指定发起方向的总次数。
-func (r *ButtonClickRepository) GetTotalCount(ctx context.Context, bindingID, userID, targetUserID int64, buttonKey string) (int64, error) {
+// GetTotalCount 按用户对统计指定方向的历次总数，不以某一次绑定 ID 截断历史。
+func (r *ButtonClickRepository) GetTotalCount(ctx context.Context, userID, targetUserID int64, buttonKey string) (int64, error) {
 	var total int64
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(click_count), 0)
 		FROM button_click_minutes
-		WHERE companion_binding_id = ? AND user_id = ? AND target_user_id = ? AND button_key = ?
-	`, bindingID, userID, targetUserID, buttonKey).Scan(&total); err != nil {
+		WHERE user_id = ? AND target_user_id = ? AND button_key = ?
+	`, userID, targetUserID, buttonKey).Scan(&total); err != nil {
 		return 0, fmt.Errorf("查询方向想念总数: %w", err)
 	}
 	return total, nil
 }
 
-// GetDailyCounts 只在数据库中读取按日期倒序的最新若干条，不把完整历史传给前端截断。
-func (r *ButtonClickRepository) GetDailyCounts(ctx context.Context, bindingID, userID, targetUserID int64, buttonKey string, limit int) ([]model.DailyClickCount, error) {
+// GetDailyCounts 按浏览器 UTC 偏移生成本地日期，跨历次绑定聚合后只返回最新若干条。
+func (r *ButtonClickRepository) GetDailyCounts(ctx context.Context, userID, targetUserID int64, buttonKey string, utcOffsetMinutes, limit int) ([]model.DailyClickCount, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT DATE_FORMAT(click_date, '%Y-%m-%d') AS click_date_label, SUM(click_count)
+		SELECT DATE_FORMAT(DATE_ADD(minute_bucket, INTERVAL ? MINUTE), '%Y-%m-%d') AS local_date, SUM(click_count)
 		FROM button_click_minutes
-		WHERE companion_binding_id = ? AND user_id = ? AND target_user_id = ? AND button_key = ?
-		GROUP BY click_date
-		ORDER BY click_date DESC
+		WHERE user_id = ? AND target_user_id = ? AND button_key = ?
+		GROUP BY local_date
+		ORDER BY local_date DESC
 		LIMIT ?
-	`, bindingID, userID, targetUserID, buttonKey, limit)
+	`, utcOffsetMinutes, userID, targetUserID, buttonKey, limit)
 	if err != nil {
 		return nil, fmt.Errorf("查询最近每日想念: %w", err)
 	}
@@ -82,15 +82,16 @@ func (r *ButtonClickRepository) GetDailyCounts(ctx context.Context, bindingID, u
 	return counts, nil
 }
 
-// GetClickMinutes 只读取指定方向按时间倒序的最新若干分钟桶。
-func (r *ButtonClickRepository) GetClickMinutes(ctx context.Context, bindingID, userID, targetUserID int64, buttonKey string, limit int) ([]model.MinuteClickCount, error) {
+// GetClickMinutes 按用户对合并同分钟的迁移旧行和历次绑定行，再读取最新若干分钟桶。
+func (r *ButtonClickRepository) GetClickMinutes(ctx context.Context, userID, targetUserID int64, buttonKey string, limit int) ([]model.MinuteClickCount, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT minute_bucket, click_count
+		SELECT minute_bucket, SUM(click_count) AS click_count
 		FROM button_click_minutes
-		WHERE companion_binding_id = ? AND user_id = ? AND target_user_id = ? AND button_key = ?
+		WHERE user_id = ? AND target_user_id = ? AND button_key = ?
+		GROUP BY minute_bucket
 		ORDER BY minute_bucket DESC
 		LIMIT ?
-	`, bindingID, userID, targetUserID, buttonKey, limit)
+	`, userID, targetUserID, buttonKey, limit)
 	if err != nil {
 		return nil, fmt.Errorf("查询最近想念分钟: %w", err)
 	}

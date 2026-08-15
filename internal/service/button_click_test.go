@@ -27,21 +27,21 @@ func (s *memoryClickStore) AddClicks(_ context.Context, bindingID, userID, targe
 	return nil
 }
 
-func (s *memoryClickStore) GetTotalCount(_ context.Context, bindingID, userID, targetID int64, buttonKey string) (int64, error) {
+func (s *memoryClickStore) GetTotalCount(_ context.Context, userID, targetID int64, buttonKey string) (int64, error) {
 	var total int64
 	for key, count := range s.buckets {
-		if key.bindingID == bindingID && key.userID == userID && key.targetID == targetID && key.buttonKey == buttonKey {
+		if key.userID == userID && key.targetID == targetID && key.buttonKey == buttonKey {
 			total += count
 		}
 	}
 	return total, nil
 }
 
-func (s *memoryClickStore) GetDailyCounts(_ context.Context, bindingID, userID, targetID int64, buttonKey string, limit int) ([]model.DailyClickCount, error) {
+func (s *memoryClickStore) GetDailyCounts(_ context.Context, userID, targetID int64, buttonKey string, utcOffsetMinutes, limit int) ([]model.DailyClickCount, error) {
 	grouped := make(map[string]int64)
 	for key, count := range s.buckets {
-		if key.bindingID == bindingID && key.userID == userID && key.targetID == targetID && key.buttonKey == buttonKey {
-			grouped[key.minute.UTC().Format(time.DateOnly)] += count
+		if key.userID == userID && key.targetID == targetID && key.buttonKey == buttonKey {
+			grouped[key.minute.UTC().Add(time.Duration(utcOffsetMinutes)*time.Minute).Format(time.DateOnly)] += count
 		}
 	}
 	dates := make([]string, 0, len(grouped))
@@ -59,12 +59,16 @@ func (s *memoryClickStore) GetDailyCounts(_ context.Context, bindingID, userID, 
 	return result, nil
 }
 
-func (s *memoryClickStore) GetClickMinutes(_ context.Context, bindingID, userID, targetID int64, buttonKey string, limit int) ([]model.MinuteClickCount, error) {
-	minutes := make([]model.MinuteClickCount, 0)
+func (s *memoryClickStore) GetClickMinutes(_ context.Context, userID, targetID int64, buttonKey string, limit int) ([]model.MinuteClickCount, error) {
+	grouped := make(map[time.Time]int64)
 	for key, count := range s.buckets {
-		if key.bindingID == bindingID && key.userID == userID && key.targetID == targetID && key.buttonKey == buttonKey {
-			minutes = append(minutes, model.MinuteClickCount{Time: key.minute, Count: count})
+		if key.userID == userID && key.targetID == targetID && key.buttonKey == buttonKey {
+			grouped[key.minute] += count
 		}
+	}
+	minutes := make([]model.MinuteClickCount, 0, len(grouped))
+	for minute, count := range grouped {
+		minutes = append(minutes, model.MinuteClickCount{Time: minute, Count: count})
 	}
 	for i := 0; i < len(minutes); i++ {
 		for j := i + 1; j < len(minutes); j++ {
@@ -99,7 +103,8 @@ func TestButtonClickMinuteBucketsAndDirectionalStats(t *testing.T) {
 		2: {Bound: true, BindingID: 9, PartnerID: 1},
 	}}
 	clicks := NewButtonClickService(store, bindings)
-	now := time.Date(2026, 8, 15, 23, 59, 18, 0, time.UTC)
+	// UTC 15:59 对应 UTC+8 的 23:59，用下一分钟验证浏览器本地日期边界。
+	now := time.Date(2026, 8, 15, 15, 59, 18, 0, time.UTC)
 	clicks.now = func() time.Time { return now }
 
 	for _, change := range []struct{ userID, count int64 }{{1, 3}, {1, 5}, {2, 2}} {
@@ -116,14 +121,18 @@ func TestButtonClickMinuteBucketsAndDirectionalStats(t *testing.T) {
 	if err := clicks.AddClicks(context.Background(), 1, 4); err != nil {
 		t.Fatal(err)
 	}
-	mine, err := clicks.Stats(context.Background(), 1, "mine")
+	// 模拟同一对象的旧绑定及迁移旧行，摘要必须跨绑定并合并相同分钟。
+	store.buckets[memoryBucketKey{bindingID: 7, userID: 1, targetID: 2, buttonKey: YanliliButtonKey, minute: now.Truncate(time.Minute).Add(-time.Minute)}] = 5
+	store.buckets[memoryBucketKey{userID: 1, targetID: 2, buttonKey: YanliliButtonKey, minute: now.Truncate(time.Minute).Add(-2 * time.Minute)}] = 6
+	mine, err := clicks.Stats(context.Background(), 1, "mine", 8*60)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mine.TotalCount != 12 || len(mine.DailyCounts) != 2 || mine.DailyCounts[0].Date != "2026-08-16" || mine.ClickMinutes[0].Count != 4 {
+	if mine.TotalCount != 23 || len(mine.DailyCounts) != 2 || mine.DailyCounts[0].Date != "2026-08-16" ||
+		len(mine.ClickMinutes) != 3 || mine.ClickMinutes[0].Count != 4 || mine.ClickMinutes[1].Count != 13 || mine.ClickMinutes[2].Count != 6 {
 		t.Fatalf("我想 ta 统计 = %#v", mine)
 	}
-	theirs, err := clicks.Stats(context.Background(), 1, "theirs")
+	theirs, err := clicks.Stats(context.Background(), 1, "theirs", 8*60)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,8 +152,11 @@ func TestButtonClickRejectsUnboundAndInvalidCount(t *testing.T) {
 			t.Fatalf("count=%d error=%v", count, err)
 		}
 	}
-	if _, err := clicks.Stats(context.Background(), 1, "bad"); err != ErrInvalidDirection {
+	if _, err := clicks.Stats(context.Background(), 1, "bad", 0); err != ErrInvalidDirection {
 		t.Fatalf("direction error=%v", err)
+	}
+	if _, err := clicks.Stats(context.Background(), 1, "mine", MaxUTCOffsetMinutes+1); err != ErrInvalidTimezoneOffset {
+		t.Fatalf("timezone offset error=%v", err)
 	}
 }
 

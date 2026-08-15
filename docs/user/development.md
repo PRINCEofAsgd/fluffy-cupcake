@@ -150,11 +150,11 @@ curl -s -b /tmp/fluffy-cookie.txt \
   -H 'Content-Type: application/json' \
   -d '{"username":"对方用户名","note":"可空备注"}' \
   http://localhost:4819/api/companion/invitations
-curl -s -b /tmp/fluffy-cookie.txt 'http://localhost:4819/api/yanlili/clicks/stats?direction=mine'
+curl -s -b /tmp/fluffy-cookie.txt 'http://localhost:4819/api/yanlili/clicks/stats?direction=mine&utc_offset_minutes=480'
 curl -s -b /tmp/fluffy-cookie.txt 'http://localhost:4819/api/yanlili/clicks/details?partner_id=2&page=1'
 ```
 
-接受绑定、修改备注、解绑邀请、接受解绑和直接解绑分别使用 `/api/companion/bindings/:id/accept`、`:id/note`、`:id/unbind-request`、`:id/unbind-accept`、`:id/unbind-direct`。除备注使用 `PATCH` 外均为 `POST`；项目没有删除信件接口。
+接受绑定、修改备注、统一解绑判定、接受解绑、取消申请和拒绝申请分别使用 `/api/companion/bindings/:id/accept`、`:id/note`、`:id/unbind-request`、`:id/unbind-accept`、`:id/unbind-cancel`、`:id/unbind-reject`。除备注使用 `PATCH` 外均为 `POST`；项目没有独立的直接解绑或删除信件接口。统一解绑请求体为 `{"confirm_inactive":false}`：对方近期登录时写入 `pending` 申请；超过 30 天未登录时返回 `inactive_confirmation_required`，前端额外确认后以 `{"confirm_inactive":true}` 重发，服务端重新判定并决定直接解绑或改发普通申请。只有发起方可取消、只有接收方可拒绝或接受；取消和拒绝保留反馈字段但不结束活跃关系。
 
 不带 `-b` 请求受保护接口应返回 401。登录响应的 JWT 由 header（算法/类型）、payload（签名保护的身份和时间声明）、signature（防篡改）构成；payload 不是加密内容，所以仍必须用 HTTPS 防止 Token 在传输中被窃取。JWT 放 HttpOnly Cookie 而非 localStorage，可降低普通页面脚本读取 Token 的风险；`Secure` 限制 HTTPS 传输，`SameSite=Lax` 降低跨站请求携带 Cookie 的机会。
 
@@ -165,7 +165,7 @@ go test ./...
 make build
 ```
 
-`make build` 默认构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V0.0.7_20260815`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
+`make build` 默认构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V0.0.9_20260816`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
 
 ```bash
 make build TARGET_PLATFORM=linux/arm64
@@ -194,5 +194,5 @@ make build TARGET_PLATFORM=linux/arm64
 - `companion_bindings` 是不可删除的生命周期信件；`companion_active_memberships` 是可释放的当前占位。后者以 `user_id` 为主键，使两个并发邀请也不能让同一用户获得两个活跃绑定。
 - 每次物理点击插一行会快速产生大量重复时间；关系 ID、方向双方和 `minute_bucket` 组成唯一键，用一行 `click_count` 保留同方向一分钟的全部次数。
 - 点击写入使用 `INSERT ... SELECT` 同时核对当前绑定占位和原子累加，避免先查绑定再解绑所产生的竞态。
-- 当前摘要在 SQL 中分别 `ORDER BY ... DESC LIMIT 8`；详细历史按对象双向索引查询并固定每页 20 条，浏览器不再接收完整历史后自行截断。
+- 当前摘要先用当前绑定确定对象，再按用户对跨历次绑定聚合并分别 `ORDER BY ... DESC LIMIT 8`；详细历史按对象双向索引查询并固定每页 20 条，浏览器不再接收完整历史后自行截断。
 - 统一存 UTC 可避免服务器搬迁、夏令时或浏览器时区造成同一时刻归属不同桶；仅在页面显示分钟时转换为浏览器本地时间。

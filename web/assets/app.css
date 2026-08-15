@@ -257,6 +257,13 @@ button {
   font-size: 0.85rem;
 }
 
+.inbox-card .unbind-feedback {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgb(238 209 197 / 34%);
+  color: #8e5d50;
+}
+
 .letter-actions button {
   padding: 7px 12px;
 }

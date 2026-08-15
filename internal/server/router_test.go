@@ -94,6 +94,19 @@ func TestClickSoundImplementation(t *testing.T) {
 	if !strings.Contains(body, "ta想我") || !strings.Contains(body, "direction=mine") && !strings.Contains(body, "statsDirection") {
 		t.Fatal("app.js 缺少双向记录切换逻辑")
 	}
+	for _, expected := range []string{"confirmUnbindRequest", "prompts.every", "confirm_inactive", "inactive_confirmation_required"} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("app.js 缺少统一解绑确认逻辑 %q", expected)
+		}
+	}
+	for _, expected := range []string{"取消解绑申请", "拒绝解绑", "unbind-cancel", "unbind-reject", "unbind_status"} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("app.js 缺少解绑申请撤销/拒绝交互 %q", expected)
+		}
+	}
+	if strings.Contains(body, "direct-unbind") || strings.Contains(body, "unbind-direct") {
+		t.Fatal("app.js 不应暴露第二条直接解绑路线")
+	}
 	if strings.Contains(body, "new Audio(") {
 		t.Fatal("app.js 不应再创建单实例 MP3 音频")
 	}

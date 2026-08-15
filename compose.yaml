@@ -44,8 +44,8 @@ services:
     build:
       context: .
       args:
-        APP_VERSION: V0.0.7_20260815
-    image: fluffy-cupcake:V0.0.7_20260815
+        APP_VERSION: V0.0.9_20260816
+    image: fluffy-cupcake:V0.0.9_20260816
     restart: unless-stopped
     environment:
       APP_ADDR: 0.0.0.0:4819

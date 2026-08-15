@@ -37,9 +37,10 @@ type CompanionStore interface {
 	AcceptInvitation(ctx context.Context, bindingID, inviteeID int64, acceptedAt time.Time) error
 	ListInbox(ctx context.Context, userID int64) ([]model.CompanionBinding, error)
 	UpdateNote(ctx context.Context, bindingID, userID int64, note string) error
-	RequestUnbind(ctx context.Context, bindingID, userID int64, requestedAt time.Time) error
+	RequestUnbind(ctx context.Context, bindingID, userID int64, requestedAt, inactiveCutoff time.Time, confirmInactive bool) (model.UnbindAction, error)
 	AcceptUnbind(ctx context.Context, bindingID, userID int64, endedAt time.Time) error
-	DirectUnbind(ctx context.Context, bindingID, userID int64, endedAt, inactiveCutoff time.Time) error
+	CancelUnbind(ctx context.Context, bindingID, userID int64, respondedAt time.Time) error
+	RejectUnbind(ctx context.Context, bindingID, userID int64, respondedAt time.Time) error
 	ListPartners(ctx context.Context, userID int64) ([]model.CompanionPartner, error)
 }
 
@@ -107,9 +108,10 @@ func (s *CompanionService) UpdateNote(ctx context.Context, userID, bindingID int
 	return s.bindings.UpdateNote(ctx, bindingID, userID, note)
 }
 
-// RequestUnbind 在原信件中发起双方确认的解绑邀请。
-func (s *CompanionService) RequestUnbind(ctx context.Context, userID, bindingID int64) error {
-	return s.bindings.RequestUnbind(ctx, bindingID, userID, s.now().UTC())
+// RequestUnbind 统一判定普通申请与长期未登录直接解绑，后者必须收到前端额外确认标记。
+func (s *CompanionService) RequestUnbind(ctx context.Context, userID, bindingID int64, confirmInactive bool) (model.UnbindAction, error) {
+	now := s.now().UTC()
+	return s.bindings.RequestUnbind(ctx, bindingID, userID, now, now.AddDate(0, 0, -DirectUnbindInactiveDays), confirmInactive)
 }
 
 // AcceptUnbind 接受另一方在同一信件中发起的解绑邀请。
@@ -117,10 +119,14 @@ func (s *CompanionService) AcceptUnbind(ctx context.Context, userID, bindingID i
 	return s.bindings.AcceptUnbind(ctx, bindingID, userID, s.now().UTC())
 }
 
-// DirectUnbind 仅在对方至少 30 天未登录时直接双向解绑。
-func (s *CompanionService) DirectUnbind(ctx context.Context, userID, bindingID int64) error {
-	now := s.now().UTC()
-	return s.bindings.DirectUnbind(ctx, bindingID, userID, now, now.AddDate(0, 0, -DirectUnbindInactiveDays))
+// CancelUnbind 允许申请发起方取消仍处于待处理状态的解绑申请。
+func (s *CompanionService) CancelUnbind(ctx context.Context, userID, bindingID int64) error {
+	return s.bindings.CancelUnbind(ctx, bindingID, userID, s.now().UTC())
+}
+
+// RejectUnbind 允许申请接收方拒绝仍处于待处理状态的解绑申请。
+func (s *CompanionService) RejectUnbind(ctx context.Context, userID, bindingID int64) error {
+	return s.bindings.RejectUnbind(ctx, bindingID, userID, s.now().UTC())
 }
 
 // Partners 返回历次已接受绑定的对象列表。

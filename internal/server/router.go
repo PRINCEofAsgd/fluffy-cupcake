@@ -65,7 +65,8 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 	companionAPI.PATCH("/bindings/:id/note", companionHandler.UpdateNote)
 	companionAPI.POST("/bindings/:id/unbind-request", companionHandler.RequestUnbind)
 	companionAPI.POST("/bindings/:id/unbind-accept", companionHandler.AcceptUnbind)
-	companionAPI.POST("/bindings/:id/unbind-direct", companionHandler.DirectUnbind)
+	companionAPI.POST("/bindings/:id/unbind-cancel", companionHandler.CancelUnbind)
+	companionAPI.POST("/bindings/:id/unbind-reject", companionHandler.RejectUnbind)
 	companionAPI.GET("/partners", companionHandler.Partners)
 	router.NoRoute(func(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"message": "页面不存在"})

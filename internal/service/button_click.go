@@ -19,16 +19,21 @@ const (
 	RecentStatsLimit = 8
 	// DetailedRecordsPageSize 是详细记录固定分页大小。
 	DetailedRecordsPageSize = 20
+	// MaxUTCOffsetMinutes 覆盖 UTC-14 到 UTC+14，并拒绝异常客户端偏移。
+	MaxUTCOffsetMinutes = 14 * 60
 )
 
-var ErrInvalidClickCount = errors.New("count 必须在 1 到 100 之间")
+var (
+	ErrInvalidClickCount     = errors.New("count 必须在 1 到 100 之间")
+	ErrInvalidTimezoneOffset = errors.New("utc_offset_minutes 必须在 -840 到 840 之间")
+)
 
 // ButtonClickStore 描述点击服务需要的关系方向写入、限量统计和详细分页能力。
 type ButtonClickStore interface {
 	AddClicks(ctx context.Context, bindingID, userID, targetUserID int64, buttonKey string, minuteBucket time.Time, count int64) error
-	GetTotalCount(ctx context.Context, bindingID, userID, targetUserID int64, buttonKey string) (int64, error)
-	GetDailyCounts(ctx context.Context, bindingID, userID, targetUserID int64, buttonKey string, limit int) ([]model.DailyClickCount, error)
-	GetClickMinutes(ctx context.Context, bindingID, userID, targetUserID int64, buttonKey string, limit int) ([]model.MinuteClickCount, error)
+	GetTotalCount(ctx context.Context, userID, targetUserID int64, buttonKey string) (int64, error)
+	GetDailyCounts(ctx context.Context, userID, targetUserID int64, buttonKey string, utcOffsetMinutes, limit int) ([]model.DailyClickCount, error)
+	GetClickMinutes(ctx context.Context, userID, targetUserID int64, buttonKey string, limit int) ([]model.MinuteClickCount, error)
 	GetDetailedRecords(ctx context.Context, userID, partnerID int64, buttonKey string, page, pageSize int) (model.DetailedClickPage, error)
 }
 
@@ -74,10 +79,13 @@ func (s *ButtonClickService) AddClicks(ctx context.Context, userID int64, count 
 	return nil
 }
 
-// Stats 查询当前绑定“我想 ta”或“ta 想我”的总数和各自最新 8 条统计。
-func (s *ButtonClickService) Stats(ctx context.Context, userID int64, direction string) (model.ButtonClickStats, error) {
+// Stats 以当前绑定对象确定用户对，再跨该用户对的历次绑定查询双向摘要。
+func (s *ButtonClickService) Stats(ctx context.Context, userID int64, direction string, utcOffsetMinutes int) (model.ButtonClickStats, error) {
 	if direction != "mine" && direction != "theirs" {
 		return model.ButtonClickStats{}, ErrInvalidDirection
+	}
+	if utcOffsetMinutes < -MaxUTCOffsetMinutes || utcOffsetMinutes > MaxUTCOffsetMinutes {
+		return model.ButtonClickStats{}, ErrInvalidTimezoneOffset
 	}
 	state, err := s.bindings.GetActiveState(ctx, userID)
 	if err != nil {
@@ -90,15 +98,15 @@ func (s *ButtonClickService) Stats(ctx context.Context, userID int64, direction 
 	if direction == "theirs" {
 		actorID, targetID = state.PartnerID, userID
 	}
-	total, err := s.clicks.GetTotalCount(ctx, state.BindingID, actorID, targetID, YanliliButtonKey)
+	total, err := s.clicks.GetTotalCount(ctx, actorID, targetID, YanliliButtonKey)
 	if err != nil {
 		return model.ButtonClickStats{}, fmt.Errorf("读取想念总数: %w", err)
 	}
-	daily, err := s.clicks.GetDailyCounts(ctx, state.BindingID, actorID, targetID, YanliliButtonKey, RecentStatsLimit)
+	daily, err := s.clicks.GetDailyCounts(ctx, actorID, targetID, YanliliButtonKey, utcOffsetMinutes, RecentStatsLimit)
 	if err != nil {
 		return model.ButtonClickStats{}, fmt.Errorf("读取每日想念: %w", err)
 	}
-	minutes, err := s.clicks.GetClickMinutes(ctx, state.BindingID, actorID, targetID, YanliliButtonKey, RecentStatsLimit)
+	minutes, err := s.clicks.GetClickMinutes(ctx, actorID, targetID, YanliliButtonKey, RecentStatsLimit)
 	if err != nil {
 		return model.ButtonClickStats{}, fmt.Errorf("读取最近想念: %w", err)
 	}

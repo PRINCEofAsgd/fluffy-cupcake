@@ -150,7 +150,8 @@ func (r *CompanionRepository) ListInbox(ctx context.Context, userID int64) ([]mo
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT binding.id, binding.inviter_id, inviter.username, binding.invitee_id, invitee.username,
 			binding.inviter_note, binding.invitee_note, binding.status, binding.accepted_at,
-			binding.unbind_requested_by, binding.unbind_requested_at, binding.ended_at,
+			binding.unbind_requested_by, binding.unbind_requested_at, binding.unbind_status,
+			binding.unbind_responded_by, binding.unbind_responded_at, binding.ended_at,
 			binding.ended_by, binding.ended_reason, binding.created_at, binding.updated_at
 		FROM companion_bindings AS binding
 		JOIN users AS inviter ON inviter.id = binding.inviter_id
@@ -208,26 +209,86 @@ func (r *CompanionRepository) UpdateNote(ctx context.Context, bindingID, userID 
 	return nil
 }
 
-// RequestUnbind 在原绑定信件中记录发起人；同一时刻只存在一个未决解绑邀请。
-func (r *CompanionRepository) RequestUnbind(ctx context.Context, bindingID, userID int64, requestedAt time.Time) error {
-	result, err := r.db.ExecContext(ctx, `
-		UPDATE companion_bindings AS binding
+// RequestUnbind 在同一事务中判定对方活跃度：近期登录则发申请，长期未登录则要求额外确认或直接结束。
+func (r *CompanionRepository) RequestUnbind(
+	ctx context.Context,
+	bindingID, userID int64,
+	requestedAt, inactiveCutoff time.Time,
+	confirmInactive bool,
+) (model.UnbindAction, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("开始解绑判定事务: %w", err)
+	}
+	defer tx.Rollback()
+
+	var inviterID, inviteeID int64
+	var status, unbindStatus string
+	var requester sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT binding.inviter_id, binding.invitee_id, binding.status,
+			binding.unbind_requested_by, binding.unbind_status
+		FROM companion_bindings AS binding
 		JOIN companion_active_memberships AS membership
 		  ON membership.binding_id = binding.id AND membership.user_id = ?
-		SET binding.unbind_requested_by = ?, binding.unbind_requested_at = ?
-		WHERE binding.id = ? AND binding.status = 'active' AND binding.unbind_requested_by IS NULL
-	`, userID, userID, requestedAt.UTC(), bindingID)
-	if err != nil {
-		return fmt.Errorf("发起解绑邀请: %w", err)
+		WHERE binding.id = ?
+		FOR UPDATE
+	`, userID, bindingID).Scan(&inviterID, &inviteeID, &status, &requester, &unbindStatus); errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	} else if err != nil {
+		return "", fmt.Errorf("锁定解绑信件: %w", err)
 	}
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("读取解绑邀请结果: %w", err)
+	if userID != inviterID && userID != inviteeID {
+		return "", ErrForbidden
 	}
-	if changed == 0 {
-		return ErrInvalidBindingState
+	if status != "active" || unbindStatus == model.UnbindStatusPending {
+		return "", ErrInvalidBindingState
 	}
-	return nil
+
+	partnerID := inviterID
+	if userID == inviterID {
+		partnerID = inviteeID
+	}
+	var lastSeen time.Time
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE(last_login_at, created_at)
+		FROM users
+		WHERE id = ?
+		FOR UPDATE
+	`, partnerID).Scan(&lastSeen); err != nil {
+		return "", fmt.Errorf("查询对方最后登录时间: %w", err)
+	}
+
+	if lastSeen.After(inactiveCutoff.UTC()) {
+		result, err := tx.ExecContext(ctx, `
+			UPDATE companion_bindings
+			SET unbind_requested_by = ?, unbind_requested_at = ?, unbind_status = 'pending',
+				unbind_responded_by = NULL, unbind_responded_at = NULL
+			WHERE id = ? AND status = 'active' AND unbind_status <> 'pending'
+		`, userID, requestedAt.UTC(), bindingID)
+		if err != nil {
+			return "", fmt.Errorf("发起解绑邀请: %w", err)
+		}
+		changed, err := result.RowsAffected()
+		if err != nil || changed != 1 {
+			return "", ErrInvalidBindingState
+		}
+		if err := tx.Commit(); err != nil {
+			return "", fmt.Errorf("提交解绑邀请: %w", err)
+		}
+		return model.UnbindActionRequestSent, nil
+	}
+
+	if !confirmInactive {
+		return model.UnbindActionInactiveConfirmationRequired, nil
+	}
+	if err := finishBinding(ctx, tx, bindingID, userID, requestedAt, "inactive"); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("提交长期未登录直接解绑: %w", err)
+	}
+	return model.UnbindActionDirectlyEnded, nil
 }
 
 // AcceptUnbind 只允许另一方接受未决邀请，并原子结束绑定与删除当前占位。
@@ -235,9 +296,14 @@ func (r *CompanionRepository) AcceptUnbind(ctx context.Context, bindingID, userI
 	return r.endBinding(ctx, bindingID, userID, endedAt)
 }
 
-// DirectUnbind 在对方最后登录早于截止时间时允许单方直接结束绑定。
-func (r *CompanionRepository) DirectUnbind(ctx context.Context, bindingID, userID int64, endedAt, inactiveCutoff time.Time) error {
-	return r.endBindingWithInactivity(ctx, bindingID, userID, endedAt, inactiveCutoff)
+// CancelUnbind 只允许申请发起方取消待处理申请，并保留申请和处理信息供双方收件箱反馈。
+func (r *CompanionRepository) CancelUnbind(ctx context.Context, bindingID, userID int64, respondedAt time.Time) error {
+	return r.resolveUnbindRequest(ctx, bindingID, userID, respondedAt, true, model.UnbindStatusCancelled)
+}
+
+// RejectUnbind 只允许申请接收方拒绝待处理申请，并保留申请和处理信息供双方收件箱反馈。
+func (r *CompanionRepository) RejectUnbind(ctx context.Context, bindingID, userID int64, respondedAt time.Time) error {
+	return r.resolveUnbindRequest(ctx, bindingID, userID, respondedAt, false, model.UnbindStatusRejected)
 }
 
 // ListPartners 返回历次已接受绑定的用户，供详细记录选择器使用。
@@ -278,10 +344,10 @@ func (r *CompanionRepository) endBinding(ctx context.Context, bindingID, userID 
 	}
 	defer tx.Rollback()
 	var inviterID, inviteeID int64
-	var status string
+	var status, unbindStatus string
 	var requester sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `SELECT inviter_id, invitee_id, status, unbind_requested_by FROM companion_bindings WHERE id = ? FOR UPDATE`, bindingID).
-		Scan(&inviterID, &inviteeID, &status, &requester); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT inviter_id, invitee_id, status, unbind_requested_by, unbind_status FROM companion_bindings WHERE id = ? FOR UPDATE`, bindingID).
+		Scan(&inviterID, &inviteeID, &status, &requester, &unbindStatus); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("锁定解绑信件: %w", err)
@@ -289,7 +355,7 @@ func (r *CompanionRepository) endBinding(ctx context.Context, bindingID, userID 
 	if userID != inviterID && userID != inviteeID {
 		return ErrForbidden
 	}
-	if status != "active" || !requester.Valid || requester.Int64 == userID {
+	if status != "active" || unbindStatus != model.UnbindStatusPending || !requester.Valid || requester.Int64 == userID {
 		return ErrInvalidBindingState
 	}
 	if err := finishBinding(ctx, tx, bindingID, userID, endedAt, "mutual"); err != nil {
@@ -298,42 +364,38 @@ func (r *CompanionRepository) endBinding(ctx context.Context, bindingID, userID 
 	return tx.Commit()
 }
 
-// endBindingWithInactivity 锁定信件和对方用户，以最后登录截止时间决定是否允许直接解绑。
-func (r *CompanionRepository) endBindingWithInactivity(ctx context.Context, bindingID, userID int64, endedAt, inactiveCutoff time.Time) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+// resolveUnbindRequest 以单条条件更新处理取消和拒绝，确保与接受解绑并发时只有一个动作成功。
+func (r *CompanionRepository) resolveUnbindRequest(
+	ctx context.Context,
+	bindingID, userID int64,
+	respondedAt time.Time,
+	requesterMustMatch bool,
+	resolvedStatus string,
+) error {
+	requesterCondition := "binding.unbind_requested_by <> ?"
+	if requesterMustMatch {
+		requesterCondition = "binding.unbind_requested_by = ?"
+	}
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE companion_bindings AS binding
+		JOIN companion_active_memberships AS membership
+		  ON membership.binding_id = binding.id AND membership.user_id = ?
+		SET binding.unbind_status = ?, binding.unbind_responded_by = ?, binding.unbind_responded_at = ?
+		WHERE binding.id = ? AND binding.status = 'active' AND binding.unbind_status = 'pending'
+		  AND `+requesterCondition,
+		userID, resolvedStatus, userID, respondedAt.UTC(), bindingID, userID,
+	)
 	if err != nil {
-		return fmt.Errorf("开始直接解绑事务: %w", err)
+		return fmt.Errorf("处理解绑申请: %w", err)
 	}
-	defer tx.Rollback()
-	var inviterID, inviteeID int64
-	var status string
-	if err := tx.QueryRowContext(ctx, `SELECT inviter_id, invitee_id, status FROM companion_bindings WHERE id = ? FOR UPDATE`, bindingID).
-		Scan(&inviterID, &inviteeID, &status); errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
-	} else if err != nil {
-		return fmt.Errorf("锁定直接解绑信件: %w", err)
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("读取解绑申请处理结果: %w", err)
 	}
-	if userID != inviterID && userID != inviteeID {
-		return ErrForbidden
-	}
-	if status != "active" {
+	if changed != 1 {
 		return ErrInvalidBindingState
 	}
-	partnerID := inviterID
-	if userID == inviterID {
-		partnerID = inviteeID
-	}
-	var lastSeen time.Time
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(last_login_at, created_at) FROM users WHERE id = ? FOR UPDATE`, partnerID).Scan(&lastSeen); err != nil {
-		return fmt.Errorf("查询对方最后登录时间: %w", err)
-	}
-	if lastSeen.After(inactiveCutoff.UTC()) {
-		return ErrPartnerRecentlyActive
-	}
-	if err := finishBinding(ctx, tx, bindingID, userID, endedAt, "inactive"); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
 
 // finishBinding 在同一事务中释放双方当前占位并完成信件结束字段。
@@ -341,11 +403,19 @@ func finishBinding(ctx context.Context, tx *sql.Tx, bindingID, endedBy int64, en
 	if _, err := tx.ExecContext(ctx, `DELETE FROM companion_active_memberships WHERE binding_id = ?`, bindingID); err != nil {
 		return fmt.Errorf("释放当前绑定占位: %w", err)
 	}
+	unbindStatus := model.UnbindStatusAccepted
+	if reason == "inactive" {
+		unbindStatus = model.UnbindStatusDirect
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE companion_bindings
-		SET status = 'ended', ended_at = ?, ended_by = ?, ended_reason = ?
+		SET status = 'ended',
+			unbind_requested_by = COALESCE(unbind_requested_by, ?),
+			unbind_requested_at = COALESCE(unbind_requested_at, ?),
+			unbind_status = ?, unbind_responded_by = ?, unbind_responded_at = ?,
+			ended_at = ?, ended_by = ?, ended_reason = ?
 		WHERE id = ? AND status = 'active'
-	`, endedAt.UTC(), endedBy, reason, bindingID)
+	`, endedBy, endedAt.UTC(), unbindStatus, endedBy, endedAt.UTC(), endedAt.UTC(), endedBy, reason, bindingID)
 	if err != nil {
 		return fmt.Errorf("结束绑定信件: %w", err)
 	}
@@ -395,7 +465,8 @@ func scanBinding(row rowScanner) (model.CompanionBinding, error) {
 	if err := row.Scan(
 		&binding.ID, &binding.InviterID, &binding.InviterUsername, &binding.InviteeID, &binding.InviteeUsername,
 		&binding.InviterNote, &binding.InviteeNote, &binding.Status, &binding.AcceptedAt,
-		&binding.UnbindRequestedBy, &binding.UnbindRequestedAt, &binding.EndedAt,
+		&binding.UnbindRequestedBy, &binding.UnbindRequestedAt, &binding.UnbindStatus,
+		&binding.UnbindRespondedBy, &binding.UnbindRespondedAt, &binding.EndedAt,
 		&binding.EndedBy, &binding.EndedReason, &binding.CreatedAt, &binding.UpdatedAt,
 	); err != nil {
 		return model.CompanionBinding{}, fmt.Errorf("读取绑定信件: %w", err)

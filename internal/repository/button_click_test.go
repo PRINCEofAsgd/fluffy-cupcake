@@ -38,6 +38,43 @@ func TestAddClicksUsesAtomicUpsert(t *testing.T) {
 	}
 }
 
+// TestPairStatsIgnoreBindingInstance 验证当前摘要只按用户对过滤，并在分钟层合并历次绑定行。
+func TestPairStatsIgnoreBindingInstance(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(click_count\\), 0\\)").
+		WithArgs(int64(3), int64(4), "yanlili").
+		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(2509)))
+	mock.ExpectQuery("SELECT DATE_FORMAT\\(DATE_ADD\\(minute_bucket").
+		WithArgs(480, int64(3), int64(4), "yanlili", 8).
+		WillReturnRows(sqlmock.NewRows([]string{"date", "count"}).AddRow("2026-08-15", int64(2509)))
+	mock.ExpectQuery("SELECT minute_bucket, SUM\\(click_count\\)").
+		WithArgs(int64(3), int64(4), "yanlili", 8).
+		WillReturnRows(sqlmock.NewRows([]string{"minute", "count"}).
+			AddRow(time.Date(2026, 8, 15, 16, 3, 0, 0, time.UTC), int64(2)))
+
+	repo := NewButtonClickRepository(db)
+	total, err := repo.GetTotalCount(context.Background(), 3, 4, "yanlili")
+	if err != nil || total != 2509 {
+		t.Fatalf("total=%d error=%v", total, err)
+	}
+	daily, err := repo.GetDailyCounts(context.Background(), 3, 4, "yanlili", 480, 8)
+	if err != nil || len(daily) != 1 || daily[0].Count != 2509 {
+		t.Fatalf("daily=%#v error=%v", daily, err)
+	}
+	minutes, err := repo.GetClickMinutes(context.Background(), 3, 4, "yanlili", 8)
+	if err != nil || len(minutes) != 1 || minutes[0].Count != 2 {
+		t.Fatalf("minutes=%#v error=%v", minutes, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestDetailedRecordsMergeBindingInstances 验证详细记录按用户对和分钟合并，不返回绑定实例。
 func TestDetailedRecordsMergeBindingInstances(t *testing.T) {
 	db, mock, err := sqlmock.New()

@@ -59,10 +59,10 @@ fluffy-cupcake/
 - `internal/config/config.go`：读取应用、连接池、JWT 和 Cookie 环境变量，拒绝不完整敏感配置。
 - `internal/database/mysql.go`：创建一次全局 `database/sql` 池，Ping 并强制连接使用 UTC。
 - `internal/repository/user.go`：用户创建和按 username/id 的显式字段查询。
-- `internal/repository/companion.go`：绑定信件、唯一当前绑定占位、备注、双向解绑和历史对象查询。
-- `internal/repository/button_click.go`：绑定关系方向内分钟桶原子 Upsert、最新 8 条统计和 20 条详细分页查询。
+- `internal/repository/companion.go`：绑定信件、唯一当前绑定占位、备注、统一解绑判定、取消/拒绝申请和历史对象查询。
+- `internal/repository/button_click.go`：关系方向内分钟桶原子 Upsert、跨历次用户对摘要和 20 条详细分页查询。
 - `internal/service/auth.go`：bcrypt 登录校验、HS256 JWT 签发解析和当前用户读取。
-- `internal/service/companion.go`：邀请输入、备注、信件状态和 30 天未登录直接解绑规则。
+- `internal/service/companion.go`：邀请输入、备注、信件状态和统一解绑的 30 天判定规则。
 - `internal/service/button_click.go`：限制 delta、解析当前绑定方向、生成 UTC 分钟桶和分页规则。
 - `internal/middleware/auth.go`：从 HttpOnly Cookie 验证 JWT，把可信 `user_id` 写入 Gin Context。
 - `internal/handler/auth.go`：登录、退出、当前用户接口和认证 Cookie 属性。
@@ -77,6 +77,8 @@ fluffy-cupcake/
 - `migrations/000001_create_users.*.sql`：创建/删除固定用户表。
 - `migrations/000002_create_button_click_minutes.*.sql`：创建/删除用户维度分钟桶表。
 - `migrations/000003_add_companion_bindings.*.sql`：升级用户/分钟桶并创建绑定信件与当前绑定占位表。
+- `migrations/000004_remove_utc_click_date.*.sql`：移除与浏览器本地日界线冲突的 UTC 生成日期列及索引。
+- `migrations/000005_add_unbind_request_states.*.sql`：增加可反馈、可重复申请的解绑子状态和处理字段。
 - `deploy/caddy/Caddyfile`：`fluffy-cupcake.cn` HTTPS 和反向代理策略。
 - `deploy/sealos/Dockerfile.migrate`：为 Sealos 内网数据库构建不含凭据的一次性 Migration 镜像。
 - `deploy/sealos/migrate-entrypoint.sh`：从运行时 `DATABASE_DSN` 执行受限的 `up` 或 `version` 命令。

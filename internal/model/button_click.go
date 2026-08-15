@@ -14,7 +14,7 @@ type MinuteClickCount struct {
 	Count int64     `json:"count"`
 }
 
-// ButtonClickStats 汇总当前绑定指定方向的总数、最近每日计数和最近分钟时间点。
+// ButtonClickStats 汇总当前对象指定方向的历次总数、最近每日计数和最近分钟时间点。
 type ButtonClickStats struct {
 	TotalCount   int64              `json:"total_count"`
 	DailyCounts  []DailyClickCount  `json:"daily_counts"`

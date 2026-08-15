@@ -11,11 +11,13 @@ import (
 )
 
 type fakeCompanionStore struct {
-	inviterID int64
-	inviteeID int64
-	note      string
-	endedAt   time.Time
-	cutoff    time.Time
+	inviterID  int64
+	inviteeID  int64
+	note       string
+	endedAt    time.Time
+	cutoff     time.Time
+	confirmed  bool
+	resolution string
 }
 
 func (f *fakeCompanionStore) GetActiveState(context.Context, int64) (model.CompanionState, error) {
@@ -32,16 +34,53 @@ func (f *fakeCompanionStore) ListInbox(context.Context, int64) ([]model.Companio
 	return nil, nil
 }
 func (f *fakeCompanionStore) UpdateNote(context.Context, int64, int64, string) error { return nil }
-func (f *fakeCompanionStore) RequestUnbind(context.Context, int64, int64, time.Time) error {
-	return nil
+func (f *fakeCompanionStore) RequestUnbind(_ context.Context, _ int64, _ int64, requestedAt, cutoff time.Time, confirmed bool) (model.UnbindAction, error) {
+	f.endedAt, f.cutoff, f.confirmed = requestedAt, cutoff, confirmed
+	if confirmed {
+		return model.UnbindActionDirectlyEnded, nil
+	}
+	return model.UnbindActionRequestSent, nil
 }
 func (f *fakeCompanionStore) AcceptUnbind(context.Context, int64, int64, time.Time) error { return nil }
-func (f *fakeCompanionStore) DirectUnbind(_ context.Context, _ int64, _ int64, endedAt, cutoff time.Time) error {
-	f.endedAt, f.cutoff = endedAt, cutoff
+func (f *fakeCompanionStore) CancelUnbind(_ context.Context, _ int64, _ int64, respondedAt time.Time) error {
+	f.endedAt, f.resolution = respondedAt, model.UnbindStatusCancelled
+	return nil
+}
+func (f *fakeCompanionStore) RejectUnbind(_ context.Context, _ int64, _ int64, respondedAt time.Time) error {
+	f.endedAt, f.resolution = respondedAt, model.UnbindStatusRejected
 	return nil
 }
 func (f *fakeCompanionStore) ListPartners(context.Context, int64) ([]model.CompanionPartner, error) {
 	return nil, nil
+}
+
+// TestResolveUnbindUsesServerTime 验证取消和拒绝都使用可信服务端时间写入反馈状态。
+func TestResolveUnbindUsesServerTime(t *testing.T) {
+	now := time.Date(2026, 8, 16, 13, 0, 0, 0, time.FixedZone("CST", 8*60*60))
+	for _, testCase := range []struct {
+		name string
+		want string
+		call func(*CompanionService) error
+	}{
+		{name: "cancel", want: model.UnbindStatusCancelled, call: func(service *CompanionService) error {
+			return service.CancelUnbind(context.Background(), 1, 9)
+		}},
+		{name: "reject", want: model.UnbindStatusRejected, call: func(service *CompanionService) error {
+			return service.RejectUnbind(context.Background(), 2, 9)
+		}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			store := &fakeCompanionStore{}
+			service := NewCompanionService(store, fakeCompanionUsers{})
+			service.now = func() time.Time { return now }
+			if err := testCase.call(service); err != nil {
+				t.Fatal(err)
+			}
+			if store.resolution != testCase.want || !store.endedAt.Equal(now.UTC()) {
+				t.Fatalf("resolution=%q respondedAt=%v", store.resolution, store.endedAt)
+			}
+		})
+	}
 }
 
 type fakeCompanionUsers struct{ users map[string]model.User }
@@ -70,16 +109,17 @@ func TestCompanionInviteValidation(t *testing.T) {
 	}
 }
 
-// TestDirectUnbindUsesThirtyDayCutoff 验证直接解绑严格使用服务端当前时间减 30 天。
-func TestDirectUnbindUsesThirtyDayCutoff(t *testing.T) {
+// TestRequestUnbindUsesThirtyDayCutoff 验证统一解绑入口传递服务端 30 天截止点和额外确认。
+func TestRequestUnbindUsesThirtyDayCutoff(t *testing.T) {
 	store := &fakeCompanionStore{}
 	service := NewCompanionService(store, fakeCompanionUsers{})
 	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
-	if err := service.DirectUnbind(context.Background(), 1, 9); err != nil {
+	action, err := service.RequestUnbind(context.Background(), 1, 9, true)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !store.endedAt.Equal(now) || !store.cutoff.Equal(now.AddDate(0, 0, -30)) {
-		t.Fatalf("endedAt=%v cutoff=%v", store.endedAt, store.cutoff)
+	if action != model.UnbindActionDirectlyEnded || !store.endedAt.Equal(now) || !store.cutoff.Equal(now.AddDate(0, 0, -30)) || !store.confirmed {
+		t.Fatalf("action=%q endedAt=%v cutoff=%v confirmed=%v", action, store.endedAt, store.cutoff, store.confirmed)
 	}
 }
