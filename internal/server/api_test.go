@@ -27,11 +27,12 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 	}
 	now := time.Now().UTC().Truncate(time.Second)
 	mock.ExpectQuery(regexp.QuoteMeta(`
-		SELECT id, username, password_hash, created_at, updated_at
+		SELECT id, username, password_hash, last_login_at, created_at, updated_at
 		FROM users
 		WHERE username = ?
-	`)).WithArgs("tester").WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "created_at", "updated_at"}).
-		AddRow(int64(1), "tester", string(hash), now, now))
+	`)).WithArgs("tester").WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "last_login_at", "created_at", "updated_at"}).
+		AddRow(int64(1), "tester", string(hash), nil, now, now))
+	mock.ExpectExec("UPDATE users SET last_login_at").WithArgs(sqlmock.AnyArg(), int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	cfg := config.Config{
 		Mode: "test",
@@ -59,11 +60,11 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 	}
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
-		SELECT id, username, password_hash, created_at, updated_at
+		SELECT id, username, password_hash, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = ?
-	`)).WithArgs(int64(1)).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "created_at", "updated_at"}).
-		AddRow(int64(1), "tester", string(hash), now, now))
+	`)).WithArgs(int64(1)).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "last_login_at", "created_at", "updated_at"}).
+		AddRow(int64(1), "tester", string(hash), now, now, now))
 	me := httptest.NewRecorder()
 	meRequest := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
 	meRequest.AddCookie(authCookie)
@@ -72,8 +73,9 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 		t.Fatalf("me status = %d, body = %s", me.Code, me.Body.String())
 	}
 
+	expectActiveBinding(mock, 1, 9, 2, "partner", "亲爱的")
 	mock.ExpectExec("INSERT INTO button_click_minutes").
-		WithArgs(int64(1), "yanlili", sqlmock.AnyArg(), int64(6)).
+		WithArgs("yanlili", sqlmock.AnyArg(), int64(6), int64(1), int64(9), int64(2), int64(6)).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	click := httptest.NewRecorder()
 	clickRequest := httptest.NewRequest(http.MethodPost, "/api/yanlili/clicks", bytes.NewBufferString(`{"count":6}`))
@@ -84,11 +86,12 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 		t.Fatalf("click status = %d, body = %s", click.Code, click.Body.String())
 	}
 
-	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(click_count\\), 0\\)").WithArgs("yanlili").
+	expectActiveBinding(mock, 1, 9, 2, "partner", "亲爱的")
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(click_count\\), 0\\)").WithArgs(int64(9), int64(1), int64(2), "yanlili").
 		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(6)))
-	mock.ExpectQuery("SELECT DATE_FORMAT\\(minute_bucket").WithArgs("yanlili").
+	mock.ExpectQuery("SELECT DATE_FORMAT\\(click_date").WithArgs(int64(9), int64(1), int64(2), "yanlili", 8).
 		WillReturnRows(sqlmock.NewRows([]string{"click_date", "count"}).AddRow("2026-08-15", int64(6)))
-	mock.ExpectQuery("SELECT minute_bucket, SUM\\(click_count\\)").WithArgs("yanlili").
+	mock.ExpectQuery("SELECT minute_bucket, click_count").WithArgs(int64(9), int64(1), int64(2), "yanlili", 8).
 		WillReturnRows(sqlmock.NewRows([]string{"minute_bucket", "count"}).AddRow(time.Date(2026, 8, 15, 3, 27, 0, 0, time.UTC), int64(6)))
 	stats := httptest.NewRecorder()
 	statsRequest := httptest.NewRequest(http.MethodGet, "/api/yanlili/clicks/stats", nil)
@@ -106,4 +109,10 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func expectActiveBinding(mock sqlmock.Sqlmock, userID, bindingID, partnerID int64, username, note string) {
+	mock.ExpectQuery("SELECT membership.binding_id, membership.partner_user_id, partner.username").
+		WithArgs(userID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"binding_id", "partner_user_id", "username", "note"}).AddRow(bindingID, partnerID, username, note))
 }

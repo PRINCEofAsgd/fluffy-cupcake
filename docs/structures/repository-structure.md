@@ -28,9 +28,9 @@ fluffy-cupcake/
 │   ├── healthcheck/            # 无外部依赖的容器健康检查客户端
 │   ├── handler/                # HTTP 请求处理器
 │   ├── middleware/             # JWT Cookie 鉴权与可信身份 Context
-│   ├── model/                  # 用户与点击统计数据模型
-│   ├── repository/             # users/button_click_minutes 显式 SQL
-│   ├── service/                # bcrypt、JWT、分钟桶与统计业务规则
+│   ├── model/                  # 用户、陪伴绑定与方向性点击数据模型
+│   ├── repository/             # users/绑定信件/当前绑定/分钟桶显式 SQL
+│   ├── service/                # bcrypt、JWT、绑定生命周期与统计业务规则
 │   ├── server/                 # Gin 路由和中间件组装
 │   └── version/                # 当前应用版本常量
 │
@@ -59,12 +59,15 @@ fluffy-cupcake/
 - `internal/config/config.go`：读取应用、连接池、JWT 和 Cookie 环境变量，拒绝不完整敏感配置。
 - `internal/database/mysql.go`：创建一次全局 `database/sql` 池，Ping 并强制连接使用 UTC。
 - `internal/repository/user.go`：用户创建和按 username/id 的显式字段查询。
-- `internal/repository/button_click.go`：分钟桶原子 Upsert 与共享按钮 `SUM/GROUP BY` 查询。
+- `internal/repository/companion.go`：绑定信件、唯一当前绑定占位、备注、双向解绑和历史对象查询。
+- `internal/repository/button_click.go`：绑定关系方向内分钟桶原子 Upsert、最新 8 条统计和 20 条详细分页查询。
 - `internal/service/auth.go`：bcrypt 登录校验、HS256 JWT 签发解析和当前用户读取。
-- `internal/service/button_click.go`：限制 delta、生成服务端 UTC 分钟桶和组合统计结果。
+- `internal/service/companion.go`：邀请输入、备注、信件状态和 30 天未登录直接解绑规则。
+- `internal/service/button_click.go`：限制 delta、解析当前绑定方向、生成 UTC 分钟桶和分页规则。
 - `internal/middleware/auth.go`：从 HttpOnly Cookie 验证 JWT，把可信 `user_id` 写入 Gin Context。
 - `internal/handler/auth.go`：登录、退出、当前用户接口和认证 Cookie 属性。
 - `internal/handler/button_click.go`：点击参数解析、受保护写入与统计响应。
+- `internal/handler/companion.go`：绑定、收件箱、备注、解绑与历史对象 HTTP 边界。
 - `internal/server/router.go`：初始化 Gin，划分公开认证接口和受保护业务接口。
 - `internal/handler/page.go`：渲染页面、读取嵌入资源并返回健康状态。
 - `web/templates/yanlili.html`：页面语义结构与可访问性标记。
@@ -73,6 +76,7 @@ fluffy-cupcake/
 - `web/assets/miss-pop.mp3`：保留的历史提示音素材，当前页面不加载。
 - `migrations/000001_create_users.*.sql`：创建/删除固定用户表。
 - `migrations/000002_create_button_click_minutes.*.sql`：创建/删除用户维度分钟桶表。
+- `migrations/000003_add_companion_bindings.*.sql`：升级用户/分钟桶并创建绑定信件与当前绑定占位表。
 - `deploy/caddy/Caddyfile`：`fluffy-cupcake.cn` HTTPS 和反向代理策略。
 - `deploy/sealos/Dockerfile.migrate`：为 Sealos 内网数据库构建不含凭据的一次性 Migration 镜像。
 - `deploy/sealos/migrate-entrypoint.sh`：从运行时 `DATABASE_DSN` 执行受限的 `up` 或 `version` 命令。

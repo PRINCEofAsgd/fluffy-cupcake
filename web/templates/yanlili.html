@@ -4,18 +4,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="按一下可爱按钮，想哥哥加一。">
+  <meta name="description" content="按一下可爱按钮，把想念留给陪伴绑定对象。">
   <meta name="theme-color" content="#fff1d8">
-  <title>想哥哥按钮</title>
+  <title>想念按钮</title>
   <link rel="stylesheet" href="/assets/app.css?v={{.Version}}">
   <script src="/assets/app.js?v={{.Version}}" defer></script>
 </head>
 <body>
   <main class="page-shell">
-    <section id="app-panel" class="app-panel" aria-label="想哥哥按钮与统计">
+    <section id="app-panel" class="app-panel" aria-label="想念按钮与陪伴绑定">
       <header class="user-bar">
         <span id="auth-status">未登录：本次点击只显示页面效果</span>
         <div class="auth-actions">
+          <button id="companion-button" type="button">陪伴绑定</button>
+          <button id="inbox-button" class="quiet-button" type="button" hidden>收件箱</button>
+          <button id="note-button" class="quiet-button" type="button" hidden>修改备注</button>
+          <button id="details-button" class="quiet-button" type="button" hidden>详细记录</button>
           <button id="login-button" type="button" aria-expanded="false" aria-controls="login-panel">登录</button>
           <button id="logout-button" type="button" hidden>退出</button>
         </div>
@@ -26,7 +30,7 @@
           <h2 id="login-title">登录并记录想念</h2>
           <button id="close-login-button" class="quiet-button" type="button" aria-label="关闭登录表单">关闭</button>
         </div>
-        <p>登录后才会保存点击并展示共同记录。</p>
+        <p>登录并完成陪伴绑定后才会保存点击和展示双向记录。</p>
         <form id="login-form" class="login-form">
           <label for="username">用户名</label>
           <input id="username" name="username" type="text" autocomplete="username" maxlength="64" required>
@@ -37,32 +41,87 @@
         <p id="login-message" class="form-message" role="alert"></p>
       </section>
 
+      <section id="companion-panel" class="login-panel" aria-labelledby="companion-title" hidden>
+        <div class="login-heading">
+          <h2 id="companion-title">发起陪伴绑定</h2>
+          <button id="close-companion-button" class="quiet-button" type="button" aria-label="关闭绑定表单">关闭</button>
+        </div>
+        <form id="companion-form" class="login-form">
+          <label for="companion-username">对方用户名</label>
+          <input id="companion-username" name="username" type="text" maxlength="64" required>
+          <label for="companion-note">备注（可空）</label>
+          <input id="companion-note" name="note" type="text" maxlength="64">
+          <button type="submit">发送绑定邀请</button>
+        </form>
+        <p id="companion-message" class="form-message" role="alert"></p>
+      </section>
+
+      <section id="note-panel" class="login-panel" aria-labelledby="note-title" hidden>
+        <div class="login-heading">
+          <h2 id="note-title">修改备注</h2>
+          <button id="close-note-button" class="quiet-button" type="button" aria-label="关闭备注表单">关闭</button>
+        </div>
+        <form id="note-form" class="login-form">
+          <label for="partner-note">绑定对象备注（留空则显示用户名）</label>
+          <input id="partner-note" name="note" type="text" maxlength="64">
+          <button type="submit">保存备注</button>
+        </form>
+        <p id="note-message" class="form-message" role="alert"></p>
+      </section>
+
+      <section id="inbox-panel" class="stats-panel" aria-labelledby="inbox-title" hidden>
+        <div class="stats-heading">
+          <h2 id="inbox-title">收件箱</h2>
+          <button id="close-inbox-button" class="icon-button" type="button" aria-label="关闭收件箱">×</button>
+        </div>
+        <div id="inbox-list" class="inbox-list"><p>还没有绑定信件</p></div>
+        <p id="inbox-message" class="form-message" role="alert"></p>
+      </section>
+
       <section class="button-stage" aria-labelledby="page-title">
-        <h1 id="page-title" class="visually-hidden">想哥哥按钮</h1>
+        <h1 id="page-title" class="visually-hidden">想念按钮</h1>
         <p class="hint" aria-hidden="true">点一下试试</p>
         <div id="float-layer" class="float-layer" aria-hidden="true"></div>
-        <button id="miss-button" class="miss-button" type="button" data-message="按按钮，想哥哥+1" aria-label="按按钮，想哥哥加一">
+        <button id="miss-button" class="miss-button" type="button" data-message="按按钮，想你+1" aria-label="按按钮，想你加一">
           <img src="/assets/miss-button.gif?v={{.Version}}" alt="可爱的纸杯蛋糕按钮" width="800" height="800" draggable="false">
         </button>
         <p id="live-message" class="visually-hidden" aria-live="polite"></p>
       </section>
       <aside id="stats-panel" class="stats-panel" aria-labelledby="stats-title" hidden>
         <div class="stats-heading">
-          <h2 id="stats-title">共同的想念记录</h2>
+          <div class="direction-heading">
+            <h2 id="stats-title">我想ta</h2>
+            <button id="direction-switch" class="icon-button" type="button" aria-label="切换想念记录方向">⇄</button>
+          </div>
           <span id="sync-status" role="status">已同步</span>
         </div>
         <p class="total-stat">总点击 <strong id="total-count">0</strong> 次</p>
         <div class="stats-grid">
           <section>
-            <h3>每日次数（UTC）</h3>
+            <h3>每日想念</h3>
             <ul id="daily-counts"><li>还没有记录</li></ul>
           </section>
           <section>
-            <h3>最近点击分钟</h3>
+            <h3>最近想念</h3>
             <ul id="click-minutes"><li>还没有记录</li></ul>
           </section>
         </div>
       </aside>
+
+      <section id="details-panel" class="stats-panel" aria-labelledby="details-title" hidden>
+        <div class="stats-heading">
+          <h2 id="details-title">详细记录</h2>
+          <button id="close-details-button" class="icon-button" type="button" aria-label="关闭详细记录">×</button>
+        </div>
+        <label for="partner-select">绑定对象</label>
+        <select id="partner-select"></select>
+        <ul id="details-list" class="details-list"><li>请选择历次绑定对象</li></ul>
+        <div class="pagination">
+          <button id="previous-page" type="button">上一页</button>
+          <span id="page-status">第 1 页</span>
+          <button id="next-page" type="button">下一页</button>
+        </div>
+      </section>
     </section>
   </main>
 </body>

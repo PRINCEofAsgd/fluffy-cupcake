@@ -17,7 +17,18 @@
 3. `AuthService` 调用 `UserRepository.GetByUsername`，Repository 以参数化 SQL 查询 `users`。
 4. Service 用 `bcrypt.CompareHashAndPassword` 比较密码；用户不存在和密码错误统一返回 401。
 5. 成功后 Service 签发含 `user_id`、`username`、`iat`、`exp` 的 HS256 JWT。
-6. Handler 把 JWT 写入 `HttpOnly`、`SameSite=Lax`、`Path=/` Cookie；release 模式同时设置 `Secure`。
+6. `UserRepository.UpdateLastLogin` 记录服务端 UTC 登录时间，作为 30 天未登录直接解绑的可信依据。
+7. Handler 把 JWT 写入 `HttpOnly`、`SameSite=Lax`、`Path=/` Cookie；release 模式同时设置 `Secure`。
+
+## 陪伴绑定与解绑链路
+
+1. 未登录用户点击“陪伴绑定”时，页面提示“该功能需登录后使用”并展开登录区；所有绑定 API 都由 Auth Middleware 保护。
+2. 登录用户提交目标用户名和可空备注，`CompanionService.Invite` 禁止绑定自己并限制备注为 64 个字符。
+3. `CompanionRepository.CreateInvitation` 锁定双方用户、确认双方都无活跃绑定，再创建 `pending` 信件；信件没有删除接口。
+4. 收信人在同一信件上接受后，Repository 在事务中向 `companion_active_memberships` 为双方各写一行；`PRIMARY KEY(user_id)` 从数据库层保证每个用户最多一个活跃绑定，同时把冲突的其他待处理信件标记为 `superseded`。
+5. 绑定任一方可修改自己的私有备注；页面点击宾语优先显示备注，否则显示对象用户名。
+6. 一方在原信件写入 `unbind_requested_by`，只有另一方能接受；接受时事务删除双方当前占位并把原信件更新为 `ended/mutual`，信件和点击历史仍保留。
+7. 直接解绑会在事务内读取对方 `last_login_at`（空值退回 `created_at`）；只有不晚于服务端当前时间减 30 天才结束为 `ended/inactive`。
 
 ## JWT 鉴权链路
 
@@ -29,18 +40,19 @@
 ## 按钮点击写入链路
 
 1. `app.js:createFloatingMessage` 始终先创建文字动画；音频随后异步启动，新点击会中断旧音轨。
-2. 未登录时链路到此结束，不增加 `pendingClicks`，因此之后登录也不会补传匿名点击。
-3. 已登录时才增加 `pendingClicks`；750ms 后 `flushClicks` 把最多 100 次合并为一次 `POST /api/yanlili/clicks`，失败会恢复 pending 并重试。
+2. 未登录或未绑定时链路到此结束，反馈固定为“按按钮，想你+1”，不增加 `pendingClicks`。
+3. 双向绑定后反馈宾语为绑定对象用户名或当前用户自己的备注，并增加 `pendingClicks`；750ms 后 `flushClicks` 把最多 100 次合并为一次 `POST /api/yanlili/clicks`。
 4. Auth Middleware 校验 Cookie，`ButtonClickHandler` 校验 `count` 范围。
-5. `ButtonClickService` 用服务端 `time.Now().UTC().Truncate(time.Minute)` 生成分钟桶。
-6. `ButtonClickRepository.AddClicks` 执行单条 MySQL Upsert；联合唯一索引命中时原子执行 `click_count = click_count + incoming.click_count`。
+5. `ButtonClickService` 读取当前绑定 ID 和对象 ID，用服务端 `time.Now().UTC().Truncate(time.Minute)` 生成分钟桶。
+6. `ButtonClickRepository.AddClicks` 通过 `INSERT ... SELECT` 再次核对当前绑定占位并执行原子 Upsert，避免解绑竞态把点击写进已结束关系。
 
 ## 点击统计读取链路
 
-1. 页面请求受保护的 `GET /api/yanlili/clicks/stats`。
-2. `ButtonClickService.Stats` 调用 Repository 的总数、每日和分钟查询。
-3. Repository 按 `button_key` 对所有用户执行 `SUM`，并分别按 UTC 日期、`minute_bucket` 做 `GROUP BY`。
-4. Handler 返回 RFC3339 时间 JSON；浏览器将分钟时间转换为本地显示，UTC 每日语义保持明确。
+1. 页面以 `direction=mine|theirs` 请求受保护的 `GET /api/yanlili/clicks/stats`，⇄ 图标在“我想ta”与“ta想我”之间切换。
+2. Service 根据当前绑定把方向解析为发起用户和目标用户，Repository 查询方向总数，并分别按时间倒序 `LIMIT 8` 返回“每日想念”和“最近想念”。
+3. “详细记录”先通过 `GET /api/companion/partners` 取得历次已接受绑定的对象，再请求 `GET /api/yanlili/clicks/details?partner_id=&page=`。
+4. 详细查询按用户对读取两个方向，把不同绑定实例和只有对象 ID 的迁移旧数据按分钟合并后 `UNION ALL`，固定 `LIMIT 20 OFFSET ...` 返回分页结果；响应不返回绑定实例 ID。
+5. Handler 返回 RFC3339 时间 JSON；浏览器只在显示分钟时转换为本地时间。
 
 ## `/yanlili` 页面调用链
 
@@ -51,7 +63,7 @@
 5. `PageHandler.Asset` 从嵌入式文件系统读取相应资源并附带缓存策略返回。
 6. `app.js:createFloatingMessage` 创建提示元素；`app.css:float-away` 立即让文字上浮渐隐。
 7. 文字进入 DOM 后，`app.js:playClickSound` 通过共享 `AudioContext` 为每次点击创建约 90ms 的独立合成声部；连续声部可重叠，共享限幅器避免叠加爆音。
-8. 主按钮始终可用；独立登录入口只控制是否持久化点击和是否展示统计区域。
+8. 主按钮始终可用；登录和当前绑定共同决定是否持久化点击，收件箱、绑定入口、备注、当前方向统计与详细历史各自独立显示。
 
 ## 健康检查调用链
 

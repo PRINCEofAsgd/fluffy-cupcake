@@ -15,6 +15,8 @@ type fakeAuthUsers struct {
 	user model.User
 }
 
+func (f fakeAuthUsers) UpdateLastLogin(_ context.Context, _ int64, _ time.Time) error { return nil }
+
 func (f fakeAuthUsers) GetByUsername(_ context.Context, username string) (model.User, error) {
 	if username != f.user.Username {
 		return model.User{}, repository.ErrNotFound

@@ -1,10 +1,10 @@
 # fluffy-cupcake
 
-fluffy-cupcake 是一个基于 Gin 与 MySQL 的私人轻量 Web 服务。任何访客都可在 `/yanlili` 使用 GIF 按钮和即时音效/动画；固定用户登录后，连续点击才会按 UTC 分钟聚合保存并展示共享统计。
+fluffy-cupcake 是一个基于 Gin 与 MySQL 的私人轻量 Web 服务。任何访客都可在 `/yanlili` 使用 GIF 按钮和即时音效/动画；固定用户可通过收件箱完成唯一的双向“陪伴绑定”，把想念按方向和 UTC 分钟保存，并查询当前或历次绑定对象的记录。
 
 ## 当前版本
 
-`V0.0.6_20260815`
+`V0.0.7_20260815`
 
 ## 快速开始
 
@@ -28,7 +28,7 @@ make test
 make build
 ```
 
-`make build` 仅在 Docker 中生成 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.6_20260815`，不会在仓库中生成本机二进制。ARM64 Linux 服务器可使用 `make build TARGET_PLATFORM=linux/arm64`。
+`make build` 仅在 Docker 中生成 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.7_20260815`，不会在仓库中生成本机二进制。ARM64 Linux 服务器可使用 `make build TARGET_PLATFORM=linux/arm64`。
 
 生产环境使用 `compose.yaml` 启动 MySQL、Gin 与 Caddy，并通过独立工具容器执行 Migration。Caddy 通过 `fluffy-cupcake.cn` 对外提供自动 HTTPS，具体准备步骤见 [部署指南](docs/user/deployment.md)。
 

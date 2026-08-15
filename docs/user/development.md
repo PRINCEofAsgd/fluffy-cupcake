@@ -18,7 +18,7 @@ Go 模块缓存由 Go 工具链管理；若需清理全部模块缓存，可运�
 不需要预先手工创建数据库。首次启动空的 MySQL 数据卷时，官方镜像会根据 `.env` 的 `MYSQL_DATABASE`、`MYSQL_USER` 和 `MYSQL_PASSWORD` 自动创建数据库与应用用户；随后 Migration 创建业务表。
 ### 使用现有 `.env` 重置测试数据库
 
-以下操作会永久删除本项目 MySQL 数据卷中的用户、点击记录和 Migration 状态，只用于明确允许丢弃数据的开发环境；不会删除 Caddy 数据卷：
+以下操作会永久删除本项目 MySQL 数据卷中的用户、绑定信件、点击记录和 Migration 状态，只用于明确允许丢弃数据的开发环境；不会删除 Caddy 数据卷：
 
 ```bash
 docker compose stop mysql
@@ -61,13 +61,13 @@ make db-up
 docker compose ps mysql
 ```
 
-执行 Migration：
+执行 Migration（当前应到版本 3）：
 
 ```bash
 make migrate-up
 ```
 
-该命令使用官方 `migrate/migrate:v4.19.1` 工具容器依次执行 `migrations/*.up.sql`。回滚最近一版可运行 `make migrate-down`；因为点击表引用用户表，完整回滚必须先回滚 `000002` 再回滚 `000001`。
+该命令使用官方 `migrate/migrate:v4.19.1` 工具容器依次执行 `migrations/*.up.sql`。回滚最近一版可运行 `make migrate-down`；完整回滚必须按 `000003`、`000002`、`000001` 的逆序执行。
 
 查看实际结构：
 
@@ -82,8 +82,12 @@ USE fluffy_cupcake;
 SHOW TABLES;
 DESCRIBE users\G
 DESCRIBE button_click_minutes\G
+DESCRIBE companion_bindings\G
+DESCRIBE companion_active_memberships\G
 SHOW INDEX FROM users\G
 SHOW INDEX FROM button_click_minutes\G
+SHOW INDEX FROM companion_bindings\G
+SHOW INDEX FROM companion_active_memberships\G
 ```
 
 ## 创建固定用户
@@ -116,6 +120,12 @@ make dev
 APP_ADDR=127.0.0.1:9090 make dev
 ```
 
+前台运行的 `make dev` 或 `./scripts/dev.sh` 使用 `Ctrl+C` 停止。若此前通过 Docker Compose 启动了本项目容器，使用以下命令停止全部项目容器；该操作保留容器和数据库卷，之后可用 `docker compose start` 恢复：
+
+```bash
+docker compose stop
+```
+
 ## 鉴权与点击接口验证
 
 ```bash
@@ -131,6 +141,21 @@ curl -i -b /tmp/fluffy-cookie.txt \
 curl -s -b /tmp/fluffy-cookie.txt http://localhost:4819/api/yanlili/clicks/stats
 ```
 
+绑定相关接口均需要同一认证 Cookie：
+
+```bash
+curl -s -b /tmp/fluffy-cookie.txt http://localhost:4819/api/companion/state
+curl -s -b /tmp/fluffy-cookie.txt http://localhost:4819/api/companion/inbox
+curl -s -b /tmp/fluffy-cookie.txt \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"对方用户名","note":"可空备注"}' \
+  http://localhost:4819/api/companion/invitations
+curl -s -b /tmp/fluffy-cookie.txt 'http://localhost:4819/api/yanlili/clicks/stats?direction=mine'
+curl -s -b /tmp/fluffy-cookie.txt 'http://localhost:4819/api/yanlili/clicks/details?partner_id=2&page=1'
+```
+
+接受绑定、修改备注、解绑邀请、接受解绑和直接解绑分别使用 `/api/companion/bindings/:id/accept`、`:id/note`、`:id/unbind-request`、`:id/unbind-accept`、`:id/unbind-direct`。除备注使用 `PATCH` 外均为 `POST`；项目没有删除信件接口。
+
 不带 `-b` 请求受保护接口应返回 401。登录响应的 JWT 由 header（算法/类型）、payload（签名保护的身份和时间声明）、signature（防篡改）构成；payload 不是加密内容，所以仍必须用 HTTPS 防止 Token 在传输中被窃取。JWT 放 HttpOnly Cookie 而非 localStorage，可降低普通页面脚本读取 Token 的风险；`Secure` 限制 HTTPS 传输，`SameSite=Lax` 降低跨站请求携带 Cookie 的机会。
 
 ## 测试与 Linux 镜像构建
@@ -140,7 +165,7 @@ go test ./...
 make build
 ```
 
-`make build` 默认构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V0.0.6_20260815`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
+`make build` 默认构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V0.0.7_20260815`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
 
 ```bash
 make build TARGET_PLATFORM=linux/arm64
@@ -166,7 +191,8 @@ make build TARGET_PLATFORM=linux/arm64
 ## 关键设计理由
 
 - Middleware 集中验证 Cookie/JWT，避免每个 Handler 复制并逐渐分叉鉴权代码；业务 Handler 的 `user_id` 必须来自签名 Token 写入的 Context，不能信任请求 JSON。
-- 每次物理点击插一行会快速产生大量重复时间；`minute_bucket` 是把服务端 UTC 时间向下截断到分钟，用一行的 `click_count` 保留全部次数。
-- `UNIQUE(user_id, button_key, minute_bucket)` 既表达“一用户一按钮一分钟一行”，也让单条 Upsert 在并发下锁定同一唯一键并执行数据库侧 `click_count + delta`，避免 `SELECT → 判断 → UPDATE` 的竞争窗口。
-- 总数直接 `SUM(click_count)`；每日和分钟统计分别 `GROUP BY` UTC 日期与分钟桶。不同用户同一分钟的行在查询时合并，所以时间只显示一次。
+- `companion_bindings` 是不可删除的生命周期信件；`companion_active_memberships` 是可释放的当前占位。后者以 `user_id` 为主键，使两个并发邀请也不能让同一用户获得两个活跃绑定。
+- 每次物理点击插一行会快速产生大量重复时间；关系 ID、方向双方和 `minute_bucket` 组成唯一键，用一行 `click_count` 保留同方向一分钟的全部次数。
+- 点击写入使用 `INSERT ... SELECT` 同时核对当前绑定占位和原子累加，避免先查绑定再解绑所产生的竞态。
+- 当前摘要在 SQL 中分别 `ORDER BY ... DESC LIMIT 8`；详细历史按对象双向索引查询并固定每页 20 条，浏览器不再接收完整历史后自行截断。
 - 统一存 UTC 可避免服务器搬迁、夏令时或浏览器时区造成同一时刻归属不同桶；仅在页面显示分钟时转换为浏览器本地时间。

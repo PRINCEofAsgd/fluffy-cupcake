@@ -31,7 +31,7 @@ func NewPageHandler(content fs.FS, version string) (*PageHandler, error) {
 	return &PageHandler{template: pageTemplate, assets: assets, version: version}, nil
 }
 
-// Yanlili 返回“想哥哥按钮”页面。
+// Yanlili 返回“想念按钮”与陪伴绑定页面。
 func (h *PageHandler) Yanlili(c *gin.Context) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Header("Cache-Control", "no-cache")

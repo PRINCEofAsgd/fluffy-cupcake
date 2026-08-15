@@ -27,11 +27,14 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 		panic("初始化页面资源失败: " + err.Error())
 	}
 	userRepository := repository.NewUserRepository(db)
+	companionRepository := repository.NewCompanionRepository(db)
 	clickRepository := repository.NewButtonClickRepository(db)
 	authService := service.NewAuthService(userRepository, cfg.Auth.JWTSecret, cfg.Auth.JWTExpire)
-	clickService := service.NewButtonClickService(clickRepository)
+	companionService := service.NewCompanionService(companionRepository, userRepository)
+	clickService := service.NewButtonClickService(clickRepository, companionRepository)
 	authHandler := handler.NewAuthHandler(authService, cfg.Auth.CookieName, cfg.Auth.CookieSecure, cfg.Auth.JWTExpire)
 	clickHandler := handler.NewButtonClickHandler(clickService)
+	companionHandler := handler.NewCompanionHandler(companionService)
 	requireAuth := middleware.RequireAuth(cfg.Auth.CookieName, authService)
 
 	router.GET("/", func(c *gin.Context) {
@@ -52,6 +55,18 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 	yanliliAPI := router.Group("/api/yanlili", requireAuth)
 	yanliliAPI.POST("/clicks", clickHandler.AddClicks)
 	yanliliAPI.GET("/clicks/stats", clickHandler.Stats)
+	yanliliAPI.GET("/clicks/details", clickHandler.Details)
+
+	companionAPI := router.Group("/api/companion", requireAuth)
+	companionAPI.GET("/state", companionHandler.State)
+	companionAPI.GET("/inbox", companionHandler.Inbox)
+	companionAPI.POST("/invitations", companionHandler.Invite)
+	companionAPI.POST("/bindings/:id/accept", companionHandler.AcceptInvitation)
+	companionAPI.PATCH("/bindings/:id/note", companionHandler.UpdateNote)
+	companionAPI.POST("/bindings/:id/unbind-request", companionHandler.RequestUnbind)
+	companionAPI.POST("/bindings/:id/unbind-accept", companionHandler.AcceptUnbind)
+	companionAPI.POST("/bindings/:id/unbind-direct", companionHandler.DirectUnbind)
+	companionAPI.GET("/partners", companionHandler.Partners)
 	router.NoRoute(func(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"message": "页面不存在"})
 	})

@@ -26,6 +26,7 @@ var (
 type AuthUserRepository interface {
 	GetByUsername(ctx context.Context, username string) (model.User, error)
 	GetByID(ctx context.Context, id int64) (model.User, error)
+	UpdateLastLogin(ctx context.Context, id int64, loginAt time.Time) error
 }
 
 // AuthClaims 是 JWT 中经过签名保护的用户身份和标准时间声明。
@@ -59,6 +60,9 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return "", time.Time{}, ErrInvalidCredentials
+	}
+	if err := s.users.UpdateLastLogin(ctx, user.ID, s.now().UTC()); err != nil {
+		return "", time.Time{}, fmt.Errorf("记录最后登录时间: %w", err)
 	}
 	return s.issueToken(user)
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/model"
 	mysqlDriver "github.com/go-sql-driver/mysql"
@@ -43,7 +44,7 @@ func (r *UserRepository) Create(ctx context.Context, username, passwordHash stri
 // GetByUsername 按唯一用户名读取鉴权所需的完整用户字段。
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (model.User, error) {
 	return r.scanUser(r.db.QueryRowContext(ctx, `
-		SELECT id, username, password_hash, created_at, updated_at
+		SELECT id, username, password_hash, last_login_at, created_at, updated_at
 		FROM users
 		WHERE username = ?
 	`, username))
@@ -52,16 +53,28 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (mo
 // GetByID 按可信 Token 中的用户 ID 读取当前用户。
 func (r *UserRepository) GetByID(ctx context.Context, id int64) (model.User, error) {
 	return r.scanUser(r.db.QueryRowContext(ctx, `
-		SELECT id, username, password_hash, created_at, updated_at
+		SELECT id, username, password_hash, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = ?
 	`, id))
 }
 
+// UpdateLastLogin 在密码校验成功后记录服务端 UTC 登录时间，供 30 天未登录直接解绑判断。
+func (r *UserRepository) UpdateLastLogin(ctx context.Context, id int64, loginAt time.Time) error {
+	result, err := r.db.ExecContext(ctx, `UPDATE users SET last_login_at = ? WHERE id = ?`, loginAt.UTC(), id)
+	if err != nil {
+		return fmt.Errorf("更新最后登录时间: %w", err)
+	}
+	if _, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("读取最后登录更新结果: %w", err)
+	}
+	return nil
+}
+
 // scanUser 统一处理用户扫描与未找到错误映射。
 func (r *UserRepository) scanUser(row *sql.Row) (model.User, error) {
 	var user model.User
-	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.CreatedAt, &user.UpdatedAt)
+	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.User{}, ErrNotFound
 	}

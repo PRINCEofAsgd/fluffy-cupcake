@@ -20,7 +20,7 @@ func TestYanliliPage(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("状态码 = %d，期望 %d", response.Code, http.StatusOK)
 	}
-	if !strings.Contains(response.Body.String(), "按按钮，想哥哥+1") {
+	if !strings.Contains(response.Body.String(), "按按钮，想你+1") {
 		t.Fatal("页面缺少点击后显示的目标文案")
 	}
 	if strings.Contains(response.Body.String(), "/assets/miss-pop.mp3") {
@@ -29,7 +29,15 @@ func TestYanliliPage(t *testing.T) {
 	if !strings.Contains(response.Body.String(), `id="login-button"`) {
 		t.Fatal("页面缺少独立登录入口")
 	}
-	if strings.Contains(response.Body.String(), `id="app-panel" class="app-panel" aria-label="想哥哥按钮与统计" hidden`) {
+	if !strings.Contains(response.Body.String(), `id="companion-button"`) {
+		t.Fatal("页面缺少未登录可见的陪伴绑定入口")
+	}
+	for _, expected := range []string{"我想ta", "每日想念", "最近想念", `id="direction-switch"`, `id="details-button"`} {
+		if !strings.Contains(response.Body.String(), expected) {
+			t.Fatalf("页面缺少新想念记录交互 %q", expected)
+		}
+	}
+	if strings.Contains(response.Body.String(), `id="app-panel" class="app-panel" aria-label="想念按钮与陪伴绑定" hidden`) {
 		t.Fatal("未登录状态不应隐藏主按钮面板")
 	}
 	if !strings.Contains(response.Body.String(), `id="stats-panel"`) || !strings.Contains(response.Body.String(), `id="stats-panel" class="stats-panel" aria-labelledby="stats-title" hidden`) {
@@ -79,6 +87,12 @@ func TestClickSoundImplementation(t *testing.T) {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("app.js 缺少可并发 Web Audio 实现 %q", expected)
 		}
+	}
+	if !strings.Contains(body, "该功能需登录后使用") {
+		t.Fatal("app.js 缺少未登录绑定的明确提示")
+	}
+	if !strings.Contains(body, "ta想我") || !strings.Contains(body, "direction=mine") && !strings.Contains(body, "statsDirection") {
+		t.Fatal("app.js 缺少双向记录切换逻辑")
 	}
 	if strings.Contains(body, "new Audio(") {
 		t.Fatal("app.js 不应再创建单实例 MP3 音频")
