@@ -8,6 +8,7 @@
   <meta name="theme-color" content="#fff1d8">
   <title>想念按钮</title>
   <link rel="stylesheet" href="/assets/app.css?v={{.Version}}">
+  <script src="/assets/qrdecoder.js?v={{.Version}}" defer></script>
   <script src="/assets/app.js?v={{.Version}}" defer></script>
 </head>
 <body>
@@ -38,6 +39,14 @@
           <input id="password" name="password" type="password" autocomplete="current-password" required>
           <button type="submit">登录</button>
         </form>
+        <div class="qr-login">
+          <p class="qr-login-divider">或使用终身卡扫码登录</p>
+          <button id="qr-scan-button" class="quiet-button" type="button">拍照扫码</button>
+          <input id="qr-file-input" type="file" accept="image/*" hidden>
+          <button id="qr-pick-button" class="quiet-button" type="button">从相册选择</button>
+          <video id="qr-video" class="qr-video" playsinline muted hidden></video>
+          <canvas id="qr-canvas" hidden></canvas>
+        </div>
         <p id="login-message" class="form-message" role="alert"></p>
       </section>
 

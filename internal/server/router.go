@@ -27,9 +27,10 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 		panic("初始化页面资源失败: " + err.Error())
 	}
 	userRepository := repository.NewUserRepository(db)
+	qrLoginRepository := repository.NewQrLoginRepository(db)
 	companionRepository := repository.NewCompanionRepository(db)
 	clickRepository := repository.NewButtonClickRepository(db)
-	authService := service.NewAuthService(userRepository, cfg.Auth.JWTSecret, cfg.Auth.JWTExpire)
+	authService := service.NewAuthService(userRepository, qrLoginRepository, cfg.Auth.JWTSecret, cfg.Auth.JWTExpire)
 	companionService := service.NewCompanionService(companionRepository, userRepository)
 	clickService := service.NewButtonClickService(clickRepository, companionRepository)
 	authHandler := handler.NewAuthHandler(authService, cfg.Auth.CookieName, cfg.Auth.CookieSecure, cfg.Auth.JWTExpire)
@@ -46,9 +47,11 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 	router.GET("/assets/miss-pop.mp3", pageHandler.Asset("miss-pop.mp3", "audio/mpeg", "public, max-age=86400"))
 	router.GET("/assets/app.css", pageHandler.Asset("app.css", "text/css; charset=utf-8", "public, max-age=3600"))
 	router.GET("/assets/app.js", pageHandler.Asset("app.js", "text/javascript; charset=utf-8", "public, max-age=3600"))
+	router.GET("/assets/qrdecoder.js", pageHandler.Asset("qrdecoder.js", "text/javascript; charset=utf-8", "public, max-age=3600"))
 
 	authAPI := router.Group("/api/auth")
 	authAPI.POST("/login", authHandler.Login)
+	authAPI.POST("/qr-login", authHandler.QrLogin)
 	authAPI.POST("/logout", authHandler.Logout)
 	authAPI.GET("/me", requireAuth, authHandler.Me)
 
@@ -88,7 +91,7 @@ func normalizeMode(mode string) string {
 // securityHeaders 为所有响应添加基础浏览器安全策略。
 func securityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self'; media-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+		c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' blob:; media-src 'self'; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 		c.Header("Referrer-Policy", "no-referrer")
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")

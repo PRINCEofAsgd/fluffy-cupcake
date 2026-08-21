@@ -74,6 +74,19 @@
 
 “每日想念”和“最近想念”都按当前对象的用户对合并不同绑定实例及迁移旧数据，在 SQL 中按新到旧排序并限制 8 条；每日分组以 UTC `minute_bucket` 加浏览器传入的 UTC 偏移生成本地日期，避免本地零点后的记录落入前一天。详细记录同样按用户对查询，先按方向和分钟合并，再用 `UNION ALL` 从新到旧排序，固定每页 20 条，响应不返回绑定实例 ID。
 
+## `qr_login_mappings`
+
+二维码永久文本到真实注册用户的一一映射表，供扫码登录使用。二维码以物理媒介分发，文本本身是公开的永久内容；文本与用户关系由数据库唯一维护，删除映射即可停用对应卡片。
+
+| 字段 | 类型 | NULL | 说明 |
+| --- | --- | --- | --- |
+| `id` | `BIGINT UNSIGNED` | 否 | 主键 |
+| `qr_text` | `VARCHAR(512)` | 否 | 二维码中的永久文本，唯一；145 字符以内可直接建立 utf8mb4 唯一索引 |
+| `user_id` | `BIGINT UNSIGNED` | 否 | 映射到的真实注册用户，扫码登录即签发给该用户 |
+| `created_at` / `updated_at` | `TIMESTAMP` | 否 | UTC 创建与更新时间 |
+
+约束：`PRIMARY KEY(id)`、`UNIQUE KEY uk_qr_login_text(qr_text)`、外键 `fk_qr_login_user` 指向 `users(id)` 且使用 `RESTRICT`。扫码登录与密码登录完全等价：服务端在文本映射成功后同样更新该用户 `last_login_at`，30 天未登录判定不区分登录方式。
+
 ## Migration
 
 - `000001_create_users.up/down.sql`：创建/删除固定用户表。
@@ -81,5 +94,6 @@
 - `000003_add_companion_bindings.up/down.sql`：新增最后登录、绑定信件和当前占位，原地升级分钟桶的关系字段与索引；Down 会先把同一用户/按钮/分钟在不同关系中的行合并，再恢复旧唯一键。
 - `000004_remove_utc_click_date.up/down.sql`：移除只表达 UTC 日期且会和浏览器本地日期冲突的生成列及索引；Down 可完整恢复。
 - `000005_add_unbind_request_states.up/down.sql`：增加解绑子状态和处理人/时间，升级时回填已有待处理、双方接受或长期未登录结果；Down 会先清除已取消/已拒绝的旧申请人，避免旧程序误判为待处理。
+- `000006_create_qr_login_mappings.up/down.sql`：创建/删除二维码文本到用户的一一映射表，Down 为直接 DROP TABLE。
 
 `000003` 不弃用也不删除原点击表。升级后可按明确指定的现有用户补 `target_user_id`，同时保持 `companion_binding_id = NULL`；这不会创建绑定信件。双方以后正常接受唯一一封真实邀请后，详细记录会按用户对呈现这些旧数据。

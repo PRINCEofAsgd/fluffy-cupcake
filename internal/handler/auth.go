@@ -51,6 +51,32 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "登录成功"})
 }
 
+// QrLoginRequest 是二维码文本登录请求；文本内容不会写入任何日志。
+type QrLoginRequest struct {
+	Text string `json:"text" binding:"required,max=512"`
+}
+
+// QrLogin 按二维码永久文本查表登录并把短期 JWT 写入 HttpOnly Cookie。
+func (h *AuthHandler) QrLogin(c *gin.Context) {
+	var request QrLoginRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "二维码内容无效"})
+		return
+	}
+	token, expiresAt, err := h.auth.LoginByQrText(c.Request.Context(), request.Text)
+	if errors.Is(err, service.ErrInvalidCredentials) {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "二维码无法识别"})
+		return
+	}
+	if err != nil {
+		slog.Error("二维码登录失败", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "登录暂时不可用"})
+		return
+	}
+	h.setCookie(c, token, expiresAt, int(h.expire.Seconds()))
+	c.JSON(http.StatusOK, gin.H{"message": "登录成功"})
+}
+
 // Logout 通过过期同名 Cookie 清除浏览器认证信息。
 func (h *AuthHandler) Logout(c *gin.Context) {
 	h.setCookie(c, "", time.Unix(1, 0), -1)

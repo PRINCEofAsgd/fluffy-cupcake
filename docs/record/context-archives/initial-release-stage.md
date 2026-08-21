@@ -1,0 +1,204 @@
+# 初版上线阶段工作记录
+
+> 阶段周期：2026-08-14—2026-08-22
+>
+> 阶段收口版本：`V1.0.0_20260822`
+>
+> 本文由 `docs/record/project-context.md` 于 2026-08-22 按阶段完整归档。
+
+## Step 5：终身卡二维码扫码登录（2026-08-17—2026-08-22）
+
+### 目标
+
+- 为特殊用户制作永久二维码卡片：二维码内容是可被通用扫码工具读取的永久文本，经本 Web 程序解析后映射到真实注册用户并直接登录。
+- 二维码以物理媒介分发，不承载密钥语义；扫码登录与密码登录会话完全等价，同样更新 `last_login_at`，不替代任何绑定解绑等业务规则。
+
+### 实现
+
+- 新增 `000006_create_qr_login_mappings`：`qr_login_mappings` 表把 `qr_text`（VARCHAR(512)，唯一索引，145 字符远低于 utf8mb4 索引上限）映射到 `users(id)` 外键 `RESTRICT`，删除映射行即可停用卡片；`users` 表零改动。
+- 新增 `QrLoginRepository`（GetUserByQrText 联查用户、Create 捕获 1062、Delete 检查影响行数）和 `AuthService.LoginByQrText`：TrimSpace 查表、更新 `last_login_at`、复用 `issueToken`；`AuthUserRepository` 接口扩展 `qr QrLoginRepository` 字段。
+- 新增公开 `POST /api/auth/qr-login`：请求体 `{text}` 限制 512 字符，未映射文本统一 401，成功后写入与密码登录完全相同的 HttpOnly Cookie。
+- 新增 `cmd/create-qr-login` CLI（`--username` + `--qr-text`/`--qr-text-stdin`）和 Makefile `create-qr-login` 目标，用于发卡时写入映射。
+- 前端登录面板新增“终身卡扫码登录”区：`web/assets/qrdecoder.js` 内置 jsQR（约 251KB，CSP `script-src 'self'` 允许）；“拍照扫码”经 `getUserMedia` 后置摄像头和视频帧回调识别，“从相册选择”走文件解码；命中后停摄像头并复用密码登录的 `completeQrLogin` 会话初始化路径。
+- 关闭登录面板、登录成功和退出登录都会停止摄像头与识别循环；摄像头不可用时提示改用相册选择。
+- 修复摄像头授权后首个 rAF 早于视频数据到达时直接退出识别循环的问题：现在等待 `loadeddata` 和有效视频尺寸，优先使用 `requestVideoFrameCallback` 持续取帧，所有未就绪及单帧异常路径都会继续调度。
+- 相册改为优先使用 `createImageBitmap(file)` 直接读取并应用照片方向，兼容路径允许 CSP `blob:`、监听加载错误并及时 `revokeObjectURL`；文件限制为图片且不超过 30MB，Canvas 最长边受控，避免手机超大照片占满内存。
+- 摄像头和相册统一使用中心区域加完整画面的多区域识别，并将 jsQR 调整为同时尝试普通/反色二维码；扫码提交增加互斥，停止操作通过 generation 使迟到的权限、视频帧和文件回调失效。
+
+### 验证
+
+- `go build ./...`、`go vet ./...`、`go test ./...` 全部通过；新增 `TestAuthLoginByQrText` 覆盖成功登录、Token 解析和未映射文本统一失败，原测试适配新构造器签名。
+- 临时 MySQL 8.4 完整执行 `000001→000006` Up 全部成功，`SHOW CREATE TABLE` 确认外键/唯一键正确；`000006 down → up` 往返成功，无残留。
+- 端到端验证：CLI 写入真实 145 字符文本映射成功且重复创建返回“二维码文本已存在”；HTTP `qr-login` 正确登录返回 JWT Cookie、`/me` 返回对应用户、`last_login_at` 已更新；未映射文本 401、513 字符 400；页面包含扫码入口且 `/assets/qrdecoder.js` 可访问。
+- 用 Python 生成测试二维码后以 Node 加载内置 jsQR 解码成功，确认扫码识别链路可用。
+- 验证中发现并修复：首次经 docker exec 插入中文文本被双重编码，改用 `--default-character-set=utf8mb4` 后插入正确，应用代码无编码问题。
+- 2026-08-22 修复后，真实浏览器分别选择普通、反色、旋转及二维码位于 12MP 照片中央的 145 字符中文样本，四种图片均成功解码并到达后端映射查询；测试文本未建映射，按预期统一返回 401。摄像头从打开状态进入有效取景提示，关闭登录面板后预览停止，控制台无 warning/error。
+- 路由回归新增二维码解码资源、相册 `blob:` CSP、连续视频帧、`createImageBitmap`、反色尝试和对象 URL 释放检查；JS 语法、Go 测试和差异格式检查通过。
+- `make build` 成功生成 `linux/amd64` 镜像 `fluffy-cupcake:V1.0.0_20260822`，最终 manifest list 摘要为 `sha256:778ec4fb49180be2f274f1ad9e653e7190f286b17f680d1f92def929a47f4df1`；本轮未推送镜像。
+
+### 后续
+
+- 部署 `V1.0.0_20260822` 前执行 `000006`；Sealos Database Studio 的版本 5→6 步骤和二维码卡片映射插入见部署文档。
+
+## Step 4：陪伴绑定与方向性想念记录（2026-08-15—2026-08-16）
+
+### 目标
+
+- 新增唯一双向“陪伴绑定”、不可删除收件箱信件、私有对象备注和双方确认解绑流程。
+- 允许对方 30 天未登录时直接解绑，并在解绑后保留历次对象与全部方向性想念记录。
+- 将当前统计改为“我想ta/ta想我”，摘要各查询最新 8 条；新增按对象选择、每页 20 条的详细记录。
+
+### 实现
+
+- `000005` 在原绑定信件上新增 `unbind_status`、处理人和处理时间；取消/拒绝会保留最近一次申请与反馈但不改变主状态或当前占位，之后重新申请覆盖同一组子状态，不新增第二封信。
+- 新增受保护的 `unbind-cancel` 与 `unbind-reject` 链路；Repository 用带角色和 `pending` 条件的原子更新保证只有发起方可取消、只有接收方可拒绝，并与接受解绑互斥。
+- 收件箱根据当前用户视角展示申请人、处理人和 `pending/cancelled/rejected/accepted/direct` 反馈：发起方待处理时显示“取消解绑申请”，接收方同时显示“接受解绑”和“拒绝解绑”。
+- `000003` 原地升级 `users` 和 `button_click_minutes`，新增 `companion_bindings` 生命周期信件与 `companion_active_memberships` 当前占位；主键从数据库层保证每个用户最多一个活跃绑定。
+- 绑定接受事务为双方建立占位并把冲突待处理信件标记为 `superseded`；解绑事务只释放当前占位，原信件和点击外键记录永久保留。
+- 登录成功更新 `last_login_at`；统一解绑入口在事务内以服务端 UTC 当前时间减 30 天检查对方最近登录，近期登录写入普通申请，长期未登录要求额外确认后重新判定并直接结束。
+- 新增陪伴 Repository/Service/Handler 和受保护 API，覆盖状态、邀请、收件箱、接受、备注、解绑、历次对象；没有删除信件路由。
+- 点击分钟桶增加绑定 ID 和目标用户 ID；写入使用当前占位驱动的 `INSERT ... SELECT` 原子 Upsert，避免查询绑定后恰好解绑的竞态。
+- 当前统计用活跃关系确定对象后按用户对跨历次绑定查询；分钟桶按分钟合并后倒序 `LIMIT 8`，每日统计按浏览器 UTC 偏移划分本地日期并 `LIMIT 8`；详细历史用双向索引查询 `UNION ALL` 后倒序分页，每页固定 20 条。
+- 页面保留未登录绑定入口并精确提示后展开登录区；绑定后入口消失，点击宾语优先使用私有备注，否则使用对象用户名，未登录或未绑定固定为“你”。
+- 收件箱在同一信件渲染接受绑定、统一“解绑”和接受解绑；解绑发送前连续三次确认，服务端返回长期未登录判定时再显示第四次直接解绑确认，不再暴露第二条操作路线。
+- 旧点击表未弃用；历史行可只补明确对象的 `target_user_id` 并保持绑定 ID 为 `NULL`，不伪造绑定信件。双方以后正常接受唯一真实邀请后，详细记录按用户对合并旧数据和历次绑定，不返回或分段展示绑定实例。
+- 生产旧数据补录后发现当前摘要仍按新绑定 ID 截断历史，已改为按用户对聚合总数、每日和分钟；不同绑定实例或迁移行落在同一分钟时合并显示。
+- 页面分钟使用浏览器本地时间而原 `click_date` 固定为 UTC 日期，导致北京时间零点后的记录归入前一天；`000004` 移除该生成列和索引，页面传入 UTC 偏移，Repository 动态生成一致的本地日期。
+
+### 验证
+
+- 2026-08-16 本次扩展后 `go test ./...`、`go test -race ./...`、`go vet ./...`、`node --check web/assets/app.js`、Compose 配置与差异格式检查均通过；覆盖取消/拒绝角色、错误角色拒绝和取消后可重新申请。
+- 真实 MySQL 8.4 完成 `000005 up → down → up`，最终为 `version=5, dirty=0`；事务内依次验证 `pending → cancelled → pending → rejected`，两次处理后主状态均为 `active` 且双方当前占位始终为 2 行，测试数据已回滚。
+- 浏览器以临时双向绑定验证：发起方显示“取消解绑申请”并在取消后显示取消反馈；接收方同时显示“接受解绑/拒绝解绑”并在拒绝后显示拒绝反馈；两端均恢复“解绑”入口且关系保持已绑定，控制台无 warning/error，临时用户、绑定与占位已清理。
+- `make build` 成功生成 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.9_20260816`；经用户明确授权，已推送至 `docker.io/princeofasgd/fluffy-cupcake:V0.0.9_20260816`，远端摘要为 `sha256:a454a03c67f31412cfb23150c2bf0ee1c6f01a9974faaf4e16a23c99268ed3c7`，未覆盖 `latest`。
+- 2026-08-16 修正后 `go test ./...`、`go test -race ./...`、`go vet ./...`、`node --check web/assets/app.js`、Compose 配置和差异格式检查均通过；覆盖跨绑定摘要、同分钟合并、UTC 偏移边界、三种统一解绑判定及页面不暴露第二路线。
+- 真实 MySQL 8.4 完成 `000004 up → down → up`，最终为 `version=4, dirty=0`；Up 后 `click_date` 与 `idx_click_relation_date` 均不存在，Down 可恢复 `STORED GENERATED` 列和索引。
+- 真实事务写入 UTC `15:59/16:03/16:14/16:15/16:16` 后，UTC+8 每日分组正确得到 `2026-08-15:30`、`2026-08-16:106`；EXPLAIN 使用 `idx_click_user_target_minute` 按用户对过滤。
+- 浏览器以临时双向绑定验证收件箱仅显示一个“解绑”按钮，普通路线完成后只显示“等待对方接受解绑”；跨零点摘要实际渲染为 8 月 16 日 106 次和 8 月 15 日 30 次，最近分钟与每日日期一致。
+- 真实 HTTP 先返回 `inactive_confirmation_required`，带额外确认重发同一接口后返回 `directly_ended`；QA 用户、绑定、点击和临时 Cookie 均已清理。
+- `make build` 成功生成 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.8_20260816`，manifest list 摘要为 `sha256:72a58f817446826cb672bfd90b8fef298d7dad864c855f3c7f2e4a8a273d1e92`。
+- Sealos 生产库已手工完成 `version=3 → 4`，精确删除 `yanlili → xiaodangao` 在北京时间 2026-08-16 00:03 的 2 次记录；双向核对确认原173次摘要属于反方向，现按本地日期正确拆为 8 月 16 日104次和 8 月 15 日69次。
+- 经用户明确授权，`linux/amd64` 镜像已推送至 `docker.io/princeofasgd/fluffy-cupcake:V0.0.8_20260816`，远端摘要为 `sha256:72a58f817446826cb672bfd90b8fef298d7dad864c855f3c7f2e4a8a273d1e92`；未覆盖 `latest`。
+- `go test ./...` 与 `node --check web/assets/app.js` 通过，覆盖方向隔离、未绑定拒绝、备注长度/自绑定、30 天截止时间、HTTP 鉴权与关系写入 SQL。
+- 真实 MySQL 8.4 成功执行 `000003 up → down → up`，Migration 最终为 `version=3, dirty=0`，回滚往返前后原点击行数与总次数均保持 `1/10`。
+- 真实事务内建立两名临时用户和双向占位，关系校验式 Upsert 连续写入 `+3/+4` 后同一方向分钟桶为 `7`，随后 `ROLLBACK` 未留下测试数据。
+- 根据生产旧数据迁移语义补充“只有对象 ID、没有绑定实例”的合法状态；真实 MySQL 8.4 在事务内成功把旧行映射到临时目标用户且绑定 ID 保持 `NULL`，不创建任何信件，随后回滚测试数据。
+- 详细记录回归验证会把同一用户对的不同绑定实例和迁移旧数据按方向、分钟合并，分页响应不包含绑定 ID；双方以后正常接受邀请时收件箱只出现真实信件。
+- 真实 MySQL EXPLAIN 显示每日想念使用 `idx_click_relation_date`，最近 8 个分钟桶使用关系唯一索引并执行 `Backward index scan`，详细对象查询使用 `idx_click_user_target_minute`；测试数据均在事务内回滚。
+- `go test -race ./...`、`go vet ./...`、`docker compose config --quiet`、`git diff --check` 均通过；真实 MySQL 与页面测试结束后临时 Gin 服务已正常停止。
+- 本地浏览器桌面与 390px 移动宽度 QA 通过：未登录绑定会展开登录区并聚焦用户名，主按钮无明显遮挡或横向溢出，控制台无 warning/error；检查中修正了登录区残留的旧“共同记录”说明。
+- `make build` 成功生成 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.7_20260815`，最终 manifest list 摘要为 `sha256:4598a10015e846c16a6c2fb8fc0186546cc115579fa8f8c35bdb078b43d8f1f0`。
+
+### 后续
+
+- 部署 `V0.0.9_20260816` 前暂停旧应用写入并执行 `000005`；Sealos Database Studio 的版本 4→5 步骤见部署文档。
+
+## Step 3：固定用户鉴权与按钮点击分钟桶（2026-08-15）
+
+### 目标
+
+- 为私人页面增加无公开注册的固定用户登录、JWT Cookie 鉴权和人工创建用户 CLI。
+- 将 `/yanlili` 连续点击批量、可靠地持久化到 MySQL，并提供共享总数、UTC 每日和分钟统计。
+- 严格保持 Handler → Service → Repository → MySQL 分层和 golang-migrate 结构管理。
+
+### 实现
+
+- 新增统一 MySQL 连接池和 UTC session，增加 `users`、`button_click_minutes` 两组可回滚 Migration。
+- 新增用户/点击模型和 Repository；点击写入使用联合唯一索引加 MySQL 行别名原子 Upsert，统计使用显式字段 `SUM/GROUP BY`。
+- 新增 bcrypt 用户创建 Service/CLI、HS256 JWT AuthService、HttpOnly Cookie Handler 和统一 Gin Auth Middleware。
+- 新增登录、退出、当前用户、点击写入和统计 API；业务 Handler 只使用 Middleware 写入 Context 的可信 `user_id`。
+- 页面新增简单登录入口、共享统计区和 750ms 点击批处理；发送失败会恢复 pending 并轻量重试，动画和 Step 2 音效不等待网络。
+- 根据实际交互反馈，将登录改为不遮挡按钮的独立入口：匿名点击只做页面反馈，登录点击才进入 pending 和数据库，统计仅在登录时展示。
+- 将六实例完整音轨叠加改为单实例可中断播放；文字先进入 DOM，音频随后异步启动，避免快速点击时音频拖慢文字反馈。
+- 根据连续点击实测，将单实例音轨改为 Web Audio 合成短音；每次点击创建独立声部并经过共享限幅器，允许并发反馈且不再加载 MP3。
+- 补充首次数据库自动初始化、三类 Secret 生成和 DSN 密码复用说明，并修正 DSN 未加引号导致开发脚本无法读取 `.env` 的问题。
+- 经用户确认测试数据可丢弃后，使用当前 `.env` 重建 MySQL 数据卷并重新执行全部 Migration；开发文档补充仅删除 MySQL 卷的可重复重置步骤。
+- Compose 新增 MySQL 8.4 和按需 golang-migrate 工具容器，敏感配置只从未提交的 `.env`/环境变量读取。
+
+### 验证
+
+- `go test ./...`、`go test -race ./...` 与 `go vet ./...` 通过；测试覆盖密码登录、bcrypt 随机盐、JWT 生成/解析/过期、Cookie Middleware、HTTP API、点击范围、同分钟累加、跨分钟/UTC 日期、多用户聚合和原子 Upsert SQL。
+- `node --check web/assets/app.js` 与包含 tools profile 的 `docker compose config` 通过。
+- 真实 MySQL 8.4 成功执行 `000001/000002 up`；`SHOW/DESCRIBE/SHOW INDEX` 确认字段、外键、唯一约束和统计索引均正确。
+- 创建用户 CLI 的终端无回显路径成功，重复用户名返回清晰错误；数据库哈希前缀为 bcrypt，且不等于明文。
+- 真实接口验证：无 Cookie `/me` 为 401，错误密码为统一 401，正确登录返回 HttpOnly/Lax Cookie，携带 Cookie 的 `/me` 为 200 且不含哈希；退出返回过期 Cookie，随后 `/me` 恢复 401。
+- 同一 UTC 分钟分别写入 `+3`、`+5` 后，MySQL 仅一行且 `click_count=8`、秒为 0；统计 API 返回 total/day/minute 均为 8。
+- 总数与分钟统计 EXPLAIN 均选择 `idx_click_button_minute`、访问类型 `ref`；当前仅一行，估算 rows=1 不能外推大数据表现。
+- 真实验证发现并修复 MySQL 将 `utc_date` 解析为内置函数名导致的每日统计 1064，改用 `click_date` 后回归通过。
+- `docker build --platform linux/amd64` 成功生成 `fluffy-cupcake:V0.0.4_20260815` scratch 镜像。
+- 交互优化后 `go test ./...`、`go vet ./...`、`node --check web/assets/app.js` 和页面结构回归通过。
+- 本地浏览器未登录状态连续点击 5 次，同一时刻生成 5 条文字反馈、实时文案计数为 5，且没有控制台错误。
+- 匿名点击前后数据库均为总数 53、分钟桶 3 行，服务日志没有点击 POST；独立登录表单展开时按钮仍可见，统计区保持隐藏。
+- `docker build --platform linux/amd64 --build-arg APP_VERSION=V0.0.5_20260815` 成功生成 `fluffy-cupcake:V0.0.5_20260815` scratch 镜像。
+- Web Audio 优化后 `go test ./...`、`go test -race ./...`、`go vet ./...`、JS/`.env.example` 语法、Compose 配置和差异格式检查通过；静态资源回归会阻止恢复单实例 `new Audio(...)`。
+- `docker build --platform linux/amd64 --build-arg APP_VERSION=V0.0.6_20260815` 成功生成 `fluffy-cupcake:V0.0.6_20260815` scratch 镜像。
+- 当前 `.env` 字段关系校验通过；旧 `fluffy-cupcake_mysql_data` 删除后由 Compose 创建新卷，Migration 成功执行至版本 2 且 `dirty=0`，用户与点击表均为 0 行。
+- DSN 补齐外层单引号后，`make dev` 能直接读取当前 `.env`、连接新库并通过 `/healthz` 检查；验证完成后已正常停止临时 Gin 服务，MySQL 保持健康运行。
+- 经用户明确确认外部目标后，`linux/amd64` 镜像已推送至 `docker.io/princeofasgd/fluffy-cupcake:V0.0.6_20260815`，远端摘要为 `sha256:fde971b112fe16f9dafef0a92644c4efb9b2ba1031ea7c4e3f50a5a3e0e6f786`；本轮未操作 Sealos。
+- 为仅内网可达的 Sealos MySQL 新增一次性 Migration 镜像：运行时读取业务应用同款 `DATABASE_DSN`，镜像不携带凭据，并将可执行命令限制为 `up`/`version`。
+- 本地 Migration 镜像以非 root 用户验证通过：缺少 DSN 和 `down` 均按预期拒绝，连接当前 MySQL 查询版本为 2，重复执行 `up` 返回 `no change`。
+- 经用户明确确认后，Migration 镜像已推送至 `docker.io/princeofasgd/fluffy-cupcake-migrate:V0.0.6_20260815`，远端摘要为 `sha256:79f8645876eddebf47f1134f8e843540656d02a25808b2fc0160613ff26a5025`。
+- Sealos 实测 Kubernetes Job 等待 180 秒仍未完成，且工作区报告 restricted PodSecurity 不满足；按用户决定放弃 Job 路径，改用目标 MySQL 的 Database Studio 直接执行 SQL。流程要求先删除旧 Job/Secret 并只读检查现有表，避免迟到执行或部分迁移引发重复建表。
+- Database Studio 已在 `fluffy_cupcake` 库依次建立迁移记录表和两张业务表，最终核对为 `version=2`、`dirty=0`；生产镜像不含创建用户 CLI，部署文档补充 macOS 隐藏输入生成 bcrypt 哈希、Database Studio 仅写入哈希的固定用户创建方式。
+- 开发文档的本地运行章节补充前台进程与 Compose 容器的停止方式，明确 `docker compose stop` 会保留容器和数据库卷。
+
+### 后续
+
+- 首次部署需生成真实 MySQL 密码和 JWT Secret，并按开发/部署文档执行 Migration 和创建固定用户。
+
+## Step 2：按钮点击音效（2026-08-15）
+
+### 目标
+
+- 每次点击 `/yanlili` 页面按钮时播放用户提供的 `miss-pop.mp3` 音效。
+- 保留现有登录、点击统计、文字动画和 Linux 镜像部署流程。
+
+### 实现
+
+- 将 MP3 作为嵌入式页面资源提供，并补充 `audio/mpeg` 路由与同源媒体安全策略。
+- 页面通过版本化资源地址加载音效，使用六个音频实例轮换播放，支持快速连续点击。
+- 音效播放失败不会影响文字动画、点击计数或服务端同步。
+
+### 验证
+
+- `node --check web/assets/app.js` 通过。
+- `go test ./...` 与 `go vet ./...` 通过，包含 MP3 路由、媒体类型和页面资源引用验证。
+- `docker compose config` 在校验用环境变量下通过。
+- `make build` 成功生成 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.3_20260815`。
+
+## Step 1：项目基线、Gin 服务与互动页面（2026-08-14）
+
+### 目标
+
+- 首次建立符合 `AGENTS.md` 职责划分的项目文档框架。
+- 按 Gin 项目常用分层方式建立可维护的 Web 服务。
+- 在 `/yanlili` 提供 GIF 按钮和点击文字上浮渐隐动效。
+- 保持本地开发监听全部网口，并为 `fluffy-cupcake.cn` 准备容器化 HTTPS 部署。
+
+### 实现
+
+- 建立 `cmd/server`、`internal/config`、`internal/handler`、`internal/server`、`web` 分层。
+- 将模板、样式、脚本和 `miss-button.gif` 嵌入二进制。
+- 增加优雅关闭、请求日志、异常恢复、安全响应头、404 和 `/healthz`。
+- 页面支持鼠标、触屏、键盘连续激活，以及系统减少动画偏好。
+- 增加多阶段 `Dockerfile`、生产 `compose.yaml` 和 Caddy 自动 HTTPS 配置。
+- 根据后续要求，将本地开发、容器运行、健康检查和反向代理目标端口统一调整为 4819。
+- 移除本机二进制构建流程，将 `make build` 和 `scripts/build.sh` 统一调整为构建 Linux 镜像；默认目标为 `linux/amd64`，并支持显式切换 `linux/arm64`。
+- 将运行镜像调整为 `scratch`，由静态 Go 二进制提供容器健康检查子命令，避免最终镜像依赖目标架构的基础系统、shell 或 wget。
+- 建立说明、结构、调用链、数据库、开发、部署、操作、版本、脚本等文档。
+
+### 验证
+
+- `go test ./...` 通过。
+- `go vet ./...` 通过。
+- `go build ./cmd/server` 通过。
+- `docker compose config` 通过。
+- 启动本地发布模式二进制后，`/yanlili`、`/healthz`、页面文案、GIF 引用和安全响应头端到端检查通过，并验证 SIGINT 优雅退出。
+- 端口调整后在 `127.0.0.1:4819` 再次完成页面、健康检查、版本资源参数和优雅退出验证。
+- 初次 `docker build` 受 Docker Hub 鉴权连接超时影响；改用缓存构建器与 `scratch` 运行阶段后已完成构建。
+- 调整为 `scratch` 运行镜像后，`make build` 已成功生成 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.2_20260814`，镜像大小约 8.1 MB。
+- 镜像元数据验证为 `linux/amd64`、用户 `10001:10001`、暴露 4819、内置二进制健康检查；在 ARM64 开发机通过模拟运行后，`/yanlili` 和 `/healthz` 正常且容器状态为 `healthy`。
+
+### 后续
+
+- 服务器上线前需配置域名 DNS、开放 80/443 端口并启动 Compose。

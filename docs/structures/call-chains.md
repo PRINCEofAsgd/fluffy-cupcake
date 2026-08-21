@@ -20,6 +20,16 @@
 6. `UserRepository.UpdateLastLogin` 记录服务端 UTC 登录时间，作为 30 天未登录直接解绑的可信依据。
 7. Handler 把 JWT 写入 `HttpOnly`、`SameSite=Lax`、`Path=/` Cookie；release 模式同时设置 `Secure`。
 
+## 二维码扫码登录链路
+
+1. 登录面板点击“拍照扫码”后，`app.js` 调用 `getUserMedia` 打开后置摄像头，等待视频产生有效尺寸，再用 `requestVideoFrameCallback` 或 rAF 持续取帧；关闭面板会停止轨道并使迟到回调失效。
+2. 每次识别先处理中心取景区域，再处理受控尺寸的完整画面，并同时尝试普通/反色二维码；相册文件优先由 `createImageBitmap` 读取并应用照片方向，旧浏览器回退到可释放的 `blob:` 图片。
+3. 识别成功后浏览器 `POST /api/auth/qr-login` 提交文本；`AuthHandler.QrLogin` 只解析 JSON，不记录文本，调用 `AuthService.LoginByQrText`。
+4. Service 先 `TrimSpace`，再调用 `QrLoginRepository.GetUserByQrText` 以参数化 SQL 联查 `qr_login_mappings` 与 `users`；未映射文本统一返回 401。
+5. 成功后 Service 与密码登录一致地调用 `UpdateLastLogin` 更新 `last_login_at`，再复用同一 `issueToken` 签发 JWT。
+6. Handler 写入与密码登录完全相同的 HttpOnly Cookie；后续请求与普通登录会话无任何区别。
+7. 前端随后请求 `/api/auth/me` 完成 `setAuthenticated`，并复用 `loadCompanionState`/`loadPartners` 初始化页面。
+
 ## 陪伴绑定与解绑链路
 
 1. 未登录用户点击“陪伴绑定”时，页面提示“该功能需登录后使用”并展开登录区；所有绑定 API 都由 Auth Middleware 保护。
@@ -60,7 +70,7 @@
 1. 浏览器请求 `GET /yanlili`。
 2. Gin 依次执行请求日志、异常恢复和安全响应头中间件。
 3. `PageHandler.Yanlili` 用当前版本渲染 `web/templates/yanlili.html`。
-4. 浏览器继续请求 `/assets/miss-button.gif`、`/assets/app.css` 和 `/assets/app.js`，页面不再下载 MP3。
+4. 浏览器继续请求 `/assets/miss-button.gif`、`/assets/app.css`、`/assets/qrdecoder.js` 和 `/assets/app.js`，页面不再下载 MP3。
 5. `PageHandler.Asset` 从嵌入式文件系统读取相应资源并附带缓存策略返回。
 6. `app.js:createFloatingMessage` 创建提示元素；`app.css:float-away` 立即让文字上浮渐隐。
 7. 文字进入 DOM 后，`app.js:playClickSound` 通过共享 `AudioContext` 为每次点击创建约 90ms 的独立合成声部；连续声部可重叠，共享限幅器避免叠加爆音。

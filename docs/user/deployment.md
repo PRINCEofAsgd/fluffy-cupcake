@@ -18,7 +18,7 @@
 make build
 ```
 
-默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.9_20260816`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像采用多阶段交叉编译和无基础系统的 `scratch` 运行阶段，最终仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
+默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.0.0_20260822`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像采用多阶段交叉编译和无基础系统的 `scratch` 运行阶段，最终仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
 
 ## 启动服务
 
@@ -53,19 +53,21 @@ FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME IN (
     'schema_migrations', 'users', 'button_click_minutes',
-    'companion_bindings', 'companion_active_memberships'
+    'companion_bindings', 'companion_active_memberships',
+    'qr_login_mappings'
   )
 ORDER BY TABLE_NAME;
 ```
 
 必须根据检查结果继续，不能在未知状态下重复执行建表 SQL：
 
-- 全部业务表均不存在：先建立空的 `schema_migrations`；依次执行 `000001` 至 `000005` 的 Up SQL，每一步明确成功后再登记对应版本，最终为 `version=5, dirty=0`。
-- 已有 `users`、`button_click_minutes` 且 `version=2, dirty=0`：暂停应用写入，依次执行 `000003`、`000004` 和 `000005`；`000003` 原地升级点击表，不删除旧点击。若已明确旧记录对象，应先创建该用户，再只补旧行的 `target_user_id` 并保持 `companion_binding_id = NULL`；不要为了迁移伪造绑定信件。
-- 五张业务表完整且 `version=3, dirty=0`：依次执行 `000004` 和 `000005`，最终登记为 `version=5, dirty=0`。
-- 五张业务表完整且 `version=4, dirty=0`：只执行 `migrations/000005_add_unbind_request_states.up.sql`，成功后登记为 `version=5, dirty=0`。该步骤只增加解绑状态与反馈字段并回填现有状态，不修改绑定主状态、当前占位或想念记录。
+- 全部业务表均不存在：先建立空的 `schema_migrations`；依次执行 `000001` 至 `000006` 的 Up SQL，每一步明确成功后再登记对应版本，最终为 `version=6, dirty=0`。
+- 已有 `users`、`button_click_minutes` 且 `version=2, dirty=0`：暂停应用写入，依次执行 `000003` 至 `000006`；`000003` 原地升级点击表，不删除旧点击。若已明确旧记录对象，应先创建该用户，再只补旧行的 `target_user_id` 并保持 `companion_binding_id = NULL`；不要为了迁移伪造绑定信件。
+- 五张业务表完整且 `version=3, dirty=0`：依次执行 `000004`、`000005` 和 `000006`，最终登记为 `version=6, dirty=0`。
+- 五张业务表完整且 `version=4, dirty=0`：依次执行 `000005` 和 `000006`，成功后登记为 `version=6, dirty=0`。
+- 五张业务表完整且 `version=5, dirty=0`：只执行 `migrations/000006_create_qr_login_mappings.up.sql`，成功后登记为 `version=6, dirty=0`。该步骤只新建二维码映射表，不修改用户、绑定或想念记录。
 - 只存在其中部分表，或 `schema_migrations` 的 `dirty` 为 `1`：先核对现有表结构，再补齐缺失部分；不要先修改版本号。
-- 上述五张表均存在：核对 `SELECT version, dirty FROM schema_migrations;`；当前期望仅一行 `version=5`、`dirty=0`。
+- 上述六张表均存在：核对 `SELECT version, dirty FROM schema_migrations;`；当前期望仅一行 `version=6`、`dirty=0`。
 
 Database Studio 操作不需要公开 MySQL 地址，也不需要把 DSN 或密码粘贴到 SQL、YAML、命令历史和聊天记录。建表和迁移版本登记完成后，生产镜像因采用 `scratch` 且只包含服务端二进制，不能在容器内运行本地 `create-user` CLI。可在 macOS Terminal 使用系统自带的 `htpasswd` 隐藏读取登录密码并生成与服务端兼容的 bcrypt cost 10 哈希：
 
@@ -84,6 +86,21 @@ FROM users;
 ```
 
 预期哈希前缀为 `$2y$10$`；服务端的 Go bcrypt 校验兼容该前缀。用户名具有唯一约束，重复执行插入会失败而不会覆盖现有用户。
+
+## 二维码卡片映射
+
+生产镜像同样不含创建映射 CLI，可在 Database Studio 中插入二维码文本与用户的映射：
+
+```sql
+INSERT INTO qr_login_mappings (qr_text, user_id)
+SELECT '二维码中的完整永久文本', id FROM users WHERE username = '用户名';
+
+SELECT m.id, m.qr_text, u.username
+FROM qr_login_mappings m
+JOIN users u ON u.id = m.user_id;
+```
+
+文本必须与卡片上的二维码内容逐字一致（扫描识别的结果），二维码文本具有唯一约束，重复插入会失败；删除该行即可停用对应卡片。已执行 `000006` 后 `qr_login_mappings` 才会存在。
 
 ## 更新与停止
 

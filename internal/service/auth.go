@@ -29,6 +29,11 @@ type AuthUserRepository interface {
 	UpdateLastLogin(ctx context.Context, id int64, loginAt time.Time) error
 }
 
+// QrLoginRepository 描述二维码登录需要的映射查询能力。
+type QrLoginRepository interface {
+	GetUserByQrText(ctx context.Context, qrText string) (model.User, error)
+}
+
 // AuthClaims 是 JWT 中经过签名保护的用户身份和标准时间声明。
 type AuthClaims struct {
 	UserID   int64  `json:"user_id"`
@@ -39,14 +44,15 @@ type AuthClaims struct {
 // AuthService 负责密码哈希比较、JWT 签发解析和当前用户读取。
 type AuthService struct {
 	users  AuthUserRepository
+	qr     QrLoginRepository
 	secret []byte
 	expire time.Duration
 	now    func() time.Time
 }
 
 // NewAuthService 创建使用 HS256 和指定短期有效期的鉴权服务。
-func NewAuthService(users AuthUserRepository, secret string, expire time.Duration) *AuthService {
-	return &AuthService{users: users, secret: []byte(secret), expire: expire, now: time.Now}
+func NewAuthService(users AuthUserRepository, qr QrLoginRepository, secret string, expire time.Duration) *AuthService {
+	return &AuthService{users: users, qr: qr, secret: []byte(secret), expire: expire, now: time.Now}
 }
 
 // Login 使用 bcrypt 比较密码，成功时签发只包含必要身份字段的短期 JWT。
@@ -60,6 +66,21 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return "", time.Time{}, ErrInvalidCredentials
+	}
+	if err := s.users.UpdateLastLogin(ctx, user.ID, s.now().UTC()); err != nil {
+		return "", time.Time{}, fmt.Errorf("记录最后登录时间: %w", err)
+	}
+	return s.issueToken(user)
+}
+
+// LoginByQrText 使用二维码永久文本查表映射用户，成功后更新最后登录时间并签发 JWT。
+func (s *AuthService) LoginByQrText(ctx context.Context, qrText string) (string, time.Time, error) {
+	user, err := s.qr.GetUserByQrText(ctx, strings.TrimSpace(qrText))
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return "", time.Time{}, ErrInvalidCredentials
+		}
+		return "", time.Time{}, fmt.Errorf("读取二维码登录用户: %w", err)
 	}
 	if err := s.users.UpdateLastLogin(ctx, user.ID, s.now().UTC()); err != nil {
 		return "", time.Time{}, fmt.Errorf("记录最后登录时间: %w", err)

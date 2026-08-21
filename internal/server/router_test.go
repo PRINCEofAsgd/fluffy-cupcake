@@ -43,8 +43,12 @@ func TestYanliliPage(t *testing.T) {
 	if !strings.Contains(response.Body.String(), `id="stats-panel"`) || !strings.Contains(response.Body.String(), `id="stats-panel" class="stats-panel" aria-labelledby="stats-title" hidden`) {
 		t.Fatal("数据库统计区域应默认隐藏并由登录状态控制")
 	}
-	if response.Header().Get("Content-Security-Policy") == "" {
+	contentSecurityPolicy := response.Header().Get("Content-Security-Policy")
+	if contentSecurityPolicy == "" {
 		t.Fatal("页面缺少 Content-Security-Policy 响应头")
+	}
+	if !strings.Contains(contentSecurityPolicy, "img-src 'self' blob:") {
+		t.Fatal("页面 CSP 必须允许旧浏览器通过 blob URL 读取用户选择的二维码图片")
 	}
 }
 
@@ -60,6 +64,7 @@ func TestHealthAndAsset(t *testing.T) {
 		{path: "/assets/miss-button.gif", contentType: "image/gif"},
 		{path: "/assets/miss-pop.mp3", contentType: "audio/mpeg"},
 		{path: "/assets/app.js", contentType: "text/javascript"},
+		{path: "/assets/qrdecoder.js", contentType: "text/javascript"},
 	} {
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
@@ -71,6 +76,35 @@ func TestHealthAndAsset(t *testing.T) {
 		if !strings.Contains(response.Header().Get("Content-Type"), testCase.contentType) {
 			t.Fatalf("GET %s Content-Type = %q", testCase.path, response.Header().Get("Content-Type"))
 		}
+	}
+}
+
+// TestQrScannerImplementation 防止摄像头首帧退出、相册 CSP 冲突和反色识别能力回退。
+func TestQrScannerImplementation(t *testing.T) {
+	router := NewRouter(config.Config{Mode: "test"}, nil)
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
+
+	router.ServeHTTP(response, request)
+	body := response.Body.String()
+	for _, expected := range []string{
+		"requestVideoFrameCallback",
+		"loadeddata",
+		"scheduleQrScan(generation)",
+		"createImageBitmap",
+		`inversionAttempts: "attemptBoth"`,
+		"decodeQrSource",
+		"URL.revokeObjectURL",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("app.js 缺少稳健二维码识别实现 %q", expected)
+		}
+	}
+	if strings.Contains(body, `readyState < 2) return`) {
+		t.Fatal("摄像头首帧未就绪时不得直接退出整个扫码循环")
+	}
+	if strings.Contains(body, `inversionAttempts: "dontInvert"`) {
+		t.Fatal("二维码识别不得禁用反色尝试")
 	}
 }
 

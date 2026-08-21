@@ -104,7 +104,24 @@ make create-user USERNAME=yanlili
 SELECT id, username, password_hash, created_at FROM users\G
 ```
 
-bcrypt 是单向、自带随机盐且成本可调的密码哈希，不是可解密的加密。相同密码每次生成的哈希通常不同，但哈希中包含算法、成本和盐，`CompareHashAndPassword` 仍可完成验证。
+bcrypt 是单向、自带随机盐且成本可调的密码哈希，不是可解的加密。相同密码每次生成的哈希通常不同，但哈希中包含算法、成本和盐，`CompareHashAndPassword` 仍可完成验证。
+
+## 创建二维码登录映射
+
+为“终身卡”二维码建立文本到用户的映射，文本可直接放在命令行参数或从标准输入读取：
+
+```bash
+make create-qr-login USERNAME=yanlili QR_TEXT_FLAGS="--qr-text 二维码中的永久文本"
+# 长文本建议从标准输入读取，避免命令历史残留
+make create-qr-login USERNAME=yanlili QR_TEXT_FLAGS="--qr-text-stdin" <<< '二维码中的完整永久文本'
+```
+
+文本必须与卡片二维码内容逐字一致，限制为 1 到 512 个字符；重复文本会返回“二维码文本已存在”。查询当前映射：
+
+```sql
+SELECT m.id, m.qr_text, u.username FROM qr_login_mappings m
+JOIN users u ON u.id = m.user_id\G
+```
 
 ## 本地运行
 
@@ -165,7 +182,7 @@ go test ./...
 make build
 ```
 
-`make build` 默认构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V0.0.9_20260816`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
+`make build` 默认构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V1.0.0_20260822`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
 
 ```bash
 make build TARGET_PLATFORM=linux/arm64

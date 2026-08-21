@@ -1,6 +1,6 @@
-.PHONY: dev test build db-up migrate-up migrate-down create-user docker-build docker-up docker-down
+.PHONY: dev test build db-up migrate-up migrate-down create-user create-qr-login docker-build docker-up docker-down
 
-APP_VERSION ?= V0.0.9_20260816
+APP_VERSION ?= V1.0.0_20260822
 TARGET_PLATFORM ?= linux/amd64
 IMAGE ?= fluffy-cupcake:$(APP_VERSION)
 
@@ -27,6 +27,11 @@ migrate-down:
 create-user:
 	@test -n "$(USERNAME)" || (echo "用法: make create-user USERNAME=用户名" >&2; exit 1)
 	@set -a; . ./.env; set +a; go run ./cmd/create-user --username "$(USERNAME)"
+
+# 为二维码卡片建立文本到用户的映射；二维码文本较长时可使用 --qr-text-stdin。
+create-qr-login:
+	@test -n "$(USERNAME)" || (echo "用法: make create-qr-login USERNAME=用户名" >&2; exit 1)
+	@set -a; . ./.env; set +a; go run ./cmd/create-qr-login --username "$(USERNAME)" $(QR_TEXT_FLAGS)
 
 # 保留原命令名作为兼容别名，实际同样只构建 Linux 镜像。
 docker-build:

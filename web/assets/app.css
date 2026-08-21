@@ -123,6 +123,34 @@ button {
   margin-top: 8px;
 }
 
+.qr-login {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed #e3bfae;
+}
+
+.qr-login-divider {
+  margin: 0;
+  color: #a87869;
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+}
+
+.qr-login .quiet-button {
+  justify-self: center;
+  padding: 8px 18px;
+}
+
+.qr-video {
+  width: 100%;
+  max-height: 300px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: #000;
+}
+
 .form-message {
   min-height: 1.5em;
   margin: 12px 0 0 !important;
