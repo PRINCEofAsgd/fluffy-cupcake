@@ -9,6 +9,7 @@
 - `docs/structures/database-structure.md`：MySQL 表、字段、约束、索引和 UTC 时间语义。
 - `docs/user/development.md`：开发、测试和构建方式。
 - `docs/user/deployment.md`：容器和域名部署方法。
+- `docs/user/database-region-migration.md`：Singapore 应用连接 Guangzhou Managed MySQL 的迁移、验证、切换和回滚 Runbook。
 - `docs/user/user.md`：页面使用方法。
 - `docs/user/release-notes.md`：当前发布版本和用户可见改动。
 - `docs/record/project-context.md`：当前阶段工作记录与上一阶段归档入口。
@@ -48,8 +49,9 @@ fluffy-cupcake/
 │       ├── project-context.md  # 当前阶段上下文与历史归档入口
 │       └── context-archives/   # 按阶段保存的完整历史上下文
 ├── scripts/                    # 开发与构建辅助脚本
+│   └── db-migration/           # OLD/NEW MySQL 只读预检与一致性验证
 ├── Dockerfile                  # 多阶段应用镜像构建
-├── compose.yaml                # MySQL、Migration 工具、Gin 与 Caddy 编排
+├── compose.yaml                # 本地/独立单机的 MySQL、Migration 工具、Gin 与 Caddy 编排
 ├── .env.example                # 不含真实 Secret 的本地配置模板
 ├── Makefile                    # 常用开发命令入口
 ├── go.mod / go.sum             # Go 模块与依赖锁定
@@ -63,7 +65,7 @@ fluffy-cupcake/
 - `cmd/create-user/main.go`：终端无回显读取密码，经 UserService 生成 bcrypt 后写入固定用户。
 - `cmd/create-qr-login/main.go`：校验真实用户后写入二维码永久文本到用户的映射，可从命令行或标准输入读取文本。
 - `internal/config/config.go`：读取应用、连接池、JWT 和 Cookie 环境变量，拒绝不完整敏感配置。
-- `internal/database/mysql.go`：创建一次全局 `database/sql` 池，Ping 并强制连接使用 UTC。
+- `internal/database/mysql.go`：创建一次全局 `database/sql` 池，Ping、强制 UTC，并为未配置的连接/读/写网络超时补 5 秒默认值。
 - `internal/repository/user.go`：用户创建和按 username/id 的显式字段查询。
 - `internal/repository/qr_login.go`：二维码文本到用户的映射查询、创建与删除。
 - `internal/repository/companion.go`：绑定信件、唯一当前绑定占位、备注、统一解绑判定、取消/拒绝申请和历史对象查询。
@@ -91,6 +93,8 @@ fluffy-cupcake/
 - `deploy/caddy/Caddyfile`：`fluffy-cupcake.cn` HTTPS 和反向代理策略。
 - `deploy/sealos/Dockerfile.migrate`：为 Sealos 内网数据库构建不含凭据的一次性 Migration 镜像。
 - `deploy/sealos/migrate-entrypoint.sh`：从运行时 `DATABASE_DSN` 执行受限的 `up` 或 `version` 命令。
+- `scripts/db-migration/verify.sh`：隐藏读取 OLD/NEW 密码，以只读查询比较表、行数、Migration、列、索引、外键和 UTC 时间边界。
+- `docs/user/database-region-migration.md`：跨区域全库 dump/restore、生产切换、冒烟、观察、回滚和旧库下线操作手册。
 - `docs/record/project-context.md`：记录当前阶段状态，并指向已经收口的阶段归档。
 - `docs/record/context-archives/initial-release-stage.md`：保存初版上线阶段 Step 1–5 的目标、实现、验证和后续事项。
 

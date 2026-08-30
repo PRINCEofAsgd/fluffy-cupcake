@@ -2,15 +2,22 @@
 
 ## 架构
 
-生产环境由 Docker Compose 管理 MySQL 8.4、Gin 和 Caddy：MySQL 使用命名卷持久化；Gin 在内部网络监听 4819；Caddy 通过公网 80/443 申请 HTTPS 证书并反向代理。`migrate/migrate:v4.19.1` 仅作为按需工具容器执行结构变更，不常驻运行。公开域名为 `fluffy-cupcake.cn`。
+部署职责明确分离：本地/独立单机开发由 `compose.yaml` 管理 MySQL 8.4、Migration 工具、Gin 和 Caddy；Sealos 生产网站与 Gin 应用位于 Singapore，数据库位于 Guangzhou Managed MySQL，应用通过数据库自身提供的 External/Public Endpoint 和运行时 `DATABASE_DSN` 连接。生产不得依赖 Compose service name `mysql` 或跨 Region `.svc` 地址。公开域名为 `fluffy-cupcake.cn`。
+
+```text
+Local:      App → Docker Compose MySQL
+Production: Singapore Sealos App → Guangzhou Sealos Managed MySQL
+```
+
+完整搬迁、验证、切换和回滚步骤见 [数据库跨区域迁移 Runbook](database-region-migration.md)。
 
 ## 部署前准备
 
-1. 将 `fluffy-cupcake.cn` 的 A 记录指向服务器公网 IPv4；若服务器可用 IPv6，再配置 AAAA 记录。
-2. 放通服务器 TCP 80、TCP 443；若需要 HTTP/3，同时放通 UDP 443。
-3. 安装 Docker Engine 和 Docker Compose v2，将本仓库放到服务器。
-4. 复制 `.env.example` 为 `.env`；分别使用 `openssl rand -hex 24` 生成应用数据库密码和 root 密码，再用 `openssl rand -hex 32` 生成独立 JWT Secret。`DATABASE_DSN` 复用应用数据库密码，不使用 root 密码；不要提交或发送 `.env`。
-5. 确认 80/443 端口未被其他服务占用；MySQL 3306 只绑定服务器回环地址。
+1. 将 `fluffy-cupcake.cn` 指向 Singapore 应用入口并启用 HTTPS。
+2. 在 Guangzhou 创建 Managed MySQL 8.x，开启 External/Public Endpoint 与自动备份；若实例支持来源 IP 白名单，只放行 Singapore 应用出口地址。
+3. 为应用创建独立随机密码账号，禁止使用 root；管理/migration 权限与运行时账号分离。
+4. 在 Sealos Secret/环境变量设置 `DATABASE_DSN` 和 JWT Secret，不提交或发送 Secret。DSN 必须使用 Guangzhou 公网端点，并配置 `timeout=5s&readTimeout=5s&writeTimeout=5s`；证书链可验证时使用 `tls=true`，无法取得 CA 且明确接受服务器身份不校验风险时可使用 `tls=skip-verify`，禁止使用会回退明文的 `tls=preferred`。
+5. 部署前从 Singapore 环境验证目标 DNS、TCP 3306、认证与启动 Ping。
 
 ## 构建镜像
 
@@ -18,9 +25,9 @@
 make build
 ```
 
-默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.0.0_20260822`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像采用多阶段交叉编译和无基础系统的 `scratch` 运行阶段，最终仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
+默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.0.1_20260830`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像采用多阶段交叉编译和无基础系统的 `scratch` 运行阶段，最终仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
 
-## 启动服务
+## 本地/独立单机 Compose
 
 ```bash
 docker compose up -d mysql
@@ -32,9 +39,21 @@ docker compose logs -f mysql app caddy
 
 首次 Migration 后使用 `make create-user USERNAME=用户名` 人工建立固定用户。DNS 生效且端口开放后，访问 `https://fluffy-cupcake.cn/yanlili`。生产 `APP_MODE=release` 会给认证 Cookie 增加 `Secure`；Caddy 提供的 HTTPS 仍是保护 JWT 不在传输中泄露的必要条件。
 
-MySQL 数据保存在 `mysql_data`，证书与 Caddy 状态分别保存在命名卷中，更新容器不会丢失。应用不会自动执行 Migration，部署新版本前应先审阅并显式运行 `migrate up`。
+这些命令中的 `mysql:3306` 只在本 Compose 网络内有效。MySQL 数据保存在 `mysql_data`，证书与 Caddy 状态分别保存在命名卷中，更新容器不会丢失。应用不会自动执行 Migration，部署新版本前应先审阅并显式运行 `migrate up`。
+
+## Sealos 生产运行配置
+
+Singapore Application 只部署应用镜像并从 Secret 注入配置，不在该 Region 随应用启动 Compose MySQL。示例 DSN 仅展示格式：
+
+```text
+fluffy_cupcake_app:URL_ENCODED_PASSWORD@tcp(GUANGZHOU_PUBLIC_ENDPOINT:3306)/fluffy_cupcake?timeout=5s&readTimeout=5s&writeTimeout=5s
+```
+
+连接层仍强制 `parseTime=true`、`loc=UTC` 和 `time_zone='+00:00'`。若 DSN 未显式设置三项网络超时，应用会分别补 5 秒；显式值不会被覆盖。公共可信证书或已注册自定义 CA 时使用 `tls=true`。平台只能提供无法验证的证书且已明确接受风险时可使用 `tls=skip-verify`：传输被加密，但不能验证服务器身份，仍存在主动中间人风险；取得官方 CA 后应升级为严格验证。禁止使用可能回退为明文的 `tls=preferred`。
 
 ## Sealos 内网 Migration
+
+本节只适用于新建空 schema 或未来单独执行版本升级，不适用于数据库跨区域全库搬迁。跨区域搬迁会恢复包含 `schema_migrations` 的完整 dump，恢复前禁止执行本节操作或 `migrate up`。
 
 当 MySQL 只有 Sealos 内网地址、工作区的 Kubernetes Job 又无法稳定启动时，使用目标 MySQL 实例自带的 Database Studio 直接执行 Migration SQL，不再创建迁移 Job。若此前创建过 Job 和临时 Secret，先在同一 namespace 的 Terminal 中删除，防止其稍后恢复并重复迁移：
 

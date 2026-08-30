@@ -3,7 +3,7 @@
 ## 服务启动链
 
 1. `cmd/server/main.go:main` 调用 `config.Load/ValidateServer` 读取并校验应用、MySQL 和 JWT 配置。
-2. `database.Open` 创建全局连接池、强制 UTC 会话并执行 `PingContext`。
+2. `database.Open` 解析 `DATABASE_DSN`，保留显式参数、为缺省连接/读/写超时各补 5 秒，创建全局连接池、强制 UTC 会话并执行 `PingContext`。
 3. `main` 调用 `server.NewRouter(cfg, db)`，组装 Repository、Service、Handler 和 Middleware。
 4. `server.NewRouter` 注册日志、恢复、安全响应头中间件及公开/受保护路由。
 5. `handler.NewPageHandler` 从 `web.Content` 解析模板并取得静态资源子文件系统。
@@ -82,3 +82,10 @@
 2. 程序入口识别 `healthcheck` 子命令，调用 `healthcheck.Run` 请求本机 `GET /healthz`。
 3. `handler.Health` 返回 HTTP 200 和 `{"status":"ok"}`，健康检查进程以状态码 0 退出。
 4. 生产编排在应用健康后启动 Caddy，Caddy 将域名流量反向代理至 `app:4819`。
+
+## 跨区域数据库迁移验证链
+
+1. 操作者以 `OLD_DB_*`/`NEW_DB_*` 提供非 Secret 连接信息；`scripts/db-migration/verify.sh` 在终端隐藏读取密码并创建权限为 0600 的临时 client 文件。
+2. `preflight OLD|NEW` 以 UTC session 读取版本、当前库、全部表、Migration、精确行数和时间列边界，不执行 DDL/DML。
+3. `verify` 分别生成确定排序的 OLD/NEW 快照，比较所有表/列、行数、PK/UNIQUE/普通索引、外键规则、`schema_migrations` 和 UTC 时间统计。
+4. 任一预期表缺失、查询失败或快照不一致即非零退出；工具不修改 DSN、不恢复数据，也不删除数据库。

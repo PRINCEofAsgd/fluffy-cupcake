@@ -1,6 +1,10 @@
 .git
 .gitignore
 .env
+db-migration-dumps
+fluffy_cupcake_backup*.sql
+*.sql.gz
+*.dump
 .DS_Store
 .idea
 .vscode

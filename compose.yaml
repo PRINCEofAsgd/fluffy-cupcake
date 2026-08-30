@@ -1,4 +1,4 @@
-# 生产编排：MySQL 持久化数据，Gin 提供业务服务，Caddy 负责公网 HTTPS。
+# 本地/单机开发编排：保留 MySQL、Migration、Gin 与 Caddy；Sealos 生产部署不使用此文件提供数据库。
 services:
   mysql:
     image: mysql:8.4
@@ -44,12 +44,13 @@ services:
     build:
       context: .
       args:
-        APP_VERSION: V1.0.0_20260822
-    image: fluffy-cupcake:V1.0.0_20260822
+        APP_VERSION: V1.0.1_20260830
+    image: fluffy-cupcake:V1.0.1_20260830
     restart: unless-stopped
     environment:
       APP_ADDR: 0.0.0.0:4819
       APP_MODE: release
+      # 这里的 mysql 是本 Compose 网络内的本地开发服务名，不能作为跨 Sealos Region 地址。
       DATABASE_DSN: ${MYSQL_USER:-fluffy_cupcake}:${MYSQL_PASSWORD:?请在 .env 配置 MYSQL_PASSWORD}@tcp(mysql:3306)/${MYSQL_DATABASE:-fluffy_cupcake}
       JWT_SECRET: ${JWT_SECRET:?请在 .env 配置 JWT_SECRET}
       JWT_EXPIRE: ${JWT_EXPIRE:-24h}

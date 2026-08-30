@@ -11,6 +11,8 @@ import (
 	mysqlDriver "github.com/go-sql-driver/mysql"
 )
 
+const defaultNetworkTimeout = 5 * time.Second
+
 // Open 创建可复用连接池，并在返回前通过 Ping 验证数据库可访问。
 func Open(parent context.Context, cfg config.DatabaseConfig) (*sql.DB, error) {
 	dsn, err := normalizedDSN(cfg.DSN)
@@ -35,6 +37,7 @@ func Open(parent context.Context, cfg config.DatabaseConfig) (*sql.DB, error) {
 }
 
 // normalizedDSN 强制所有池连接按 UTC 解释时间并启用 time.Time 扫描。
+// 跨区域网络超时仅在 DSN 未显式配置时补默认值，调用方可按实际链路覆盖。
 func normalizedDSN(raw string) (string, error) {
 	parsed, err := mysqlDriver.ParseDSN(raw)
 	if err != nil {
@@ -42,6 +45,15 @@ func normalizedDSN(raw string) (string, error) {
 	}
 	parsed.ParseTime = true
 	parsed.Loc = time.UTC
+	if parsed.Timeout == 0 {
+		parsed.Timeout = defaultNetworkTimeout
+	}
+	if parsed.ReadTimeout == 0 {
+		parsed.ReadTimeout = defaultNetworkTimeout
+	}
+	if parsed.WriteTimeout == 0 {
+		parsed.WriteTimeout = defaultNetworkTimeout
+	}
 	if parsed.Params == nil {
 		parsed.Params = make(map[string]string)
 	}

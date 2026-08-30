@@ -1,6 +1,6 @@
 # 数据库结构
 
-当前使用 MySQL 8.x、InnoDB 和 `utf8mb4_0900_ai_ci`。结构变更只通过 `migrations/` 中的 golang-migrate Up/Down 文件管理。应用连接池强制 `parseTime=true`、`loc=UTC` 和 session `time_zone='+00:00'`；登录、邀请、解绑、分钟桶和 API 时间以 UTC 保存与传输，“每日想念”在查询时按浏览器 UTC 偏移划分本地日期。
+当前使用 MySQL 8.x、InnoDB 和 `utf8mb4_0900_ai_ci`。结构变更只通过 `migrations/` 中的 golang-migrate Up/Down 文件管理。应用连接池强制 `parseTime=true`、`loc=UTC` 和 session `time_zone='+00:00'`，并在 DSN 未显式配置时为连接、读取和写入分别补 5 秒网络超时；登录、邀请、解绑、分钟桶和 API 时间以 UTC 保存与传输，“每日想念”在查询时按浏览器 UTC 偏移划分本地日期。
 
 ## `users`
 
@@ -97,3 +97,5 @@
 - `000006_create_qr_login_mappings.up/down.sql`：创建/删除二维码文本到用户的一一映射表，Down 为直接 DROP TABLE。
 
 `000003` 不弃用也不删除原点击表。升级后可按明确指定的现有用户补 `target_user_id`，同时保持 `companion_binding_id = NULL`；这不会创建绑定信件。双方以后正常接受唯一一封真实邀请后，详细记录会按用户对呈现这些旧数据。
+
+跨区域搬迁不创建新的 schema migration：从源库完整 dump 后恢复到空目标库，连同 `schema_migrations` 一起迁移。恢复前禁止先运行 `migrate up`；详细验证与回滚边界见 `docs/user/database-region-migration.md`。

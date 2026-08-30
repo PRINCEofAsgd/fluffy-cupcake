@@ -46,7 +46,7 @@ MYSQL_USER=fluffy_cupcake
 MYSQL_PASSWORD=<APP_DB_PASSWORD>
 MYSQL_ROOT_PASSWORD=<ROOT_DB_PASSWORD>
 MYSQL_PORT=3306
-DATABASE_DSN='fluffy_cupcake:<APP_DB_PASSWORD>@tcp(127.0.0.1:3306)/fluffy_cupcake'
+DATABASE_DSN='fluffy_cupcake:<APP_DB_PASSWORD>@tcp(127.0.0.1:3306)/fluffy_cupcake?timeout=5s&readTimeout=5s&writeTimeout=5s'
 JWT_SECRET=<JWT_RANDOM_SECRET>
 JWT_EXPIRE=24h
 ```
@@ -61,13 +61,13 @@ make db-up
 docker compose ps mysql
 ```
 
-执行 Migration（当前应到版本 3）：
+执行 Migration（当前应到版本 6）：
 
 ```bash
 make migrate-up
 ```
 
-该命令使用官方 `migrate/migrate:v4.19.1` 工具容器依次执行 `migrations/*.up.sql`。回滚最近一版可运行 `make migrate-down`；完整回滚必须按 `000003`、`000002`、`000001` 的逆序执行。
+该命令使用官方 `migrate/migrate:v4.19.1` 工具容器依次执行 `migrations/*.up.sql`。回滚最近一版可运行 `make migrate-down`；完整回滚必须按 `000006` 到 `000001` 的逆序执行。
 
 查看实际结构：
 
@@ -84,10 +84,12 @@ DESCRIBE users\G
 DESCRIBE button_click_minutes\G
 DESCRIBE companion_bindings\G
 DESCRIBE companion_active_memberships\G
+DESCRIBE qr_login_mappings\G
 SHOW INDEX FROM users\G
 SHOW INDEX FROM button_click_minutes\G
 SHOW INDEX FROM companion_bindings\G
 SHOW INDEX FROM companion_active_memberships\G
+SHOW INDEX FROM qr_login_mappings\G
 ```
 
 ## 创建固定用户
@@ -182,7 +184,7 @@ go test ./...
 make build
 ```
 
-`make build` 默认构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V1.0.0_20260822`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
+`make build` 默认构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V1.0.1_20260830`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
 
 ```bash
 make build TARGET_PLATFORM=linux/arm64
@@ -196,7 +198,7 @@ make build TARGET_PLATFORM=linux/arm64
 | --- | --- | --- |
 | `APP_ADDR` | `0.0.0.0:4819` | HTTP 监听地址 |
 | `APP_MODE` | `debug` | Gin 模式，可用 `debug`、`test`、`release` |
-| `DATABASE_DSN` | 无，必填 | MySQL DSN；连接层自动强制 `parseTime` 和 UTC session |
+| `DATABASE_DSN` | 无，必填 | MySQL DSN；连接层强制 `parseTime`/UTC session，并在未显式设置时补 5s 的连接/读/写超时 |
 | `DB_MAX_OPEN_CONNS` | `10` | 最大打开连接数 |
 | `DB_MAX_IDLE_CONNS` | `5` | 最大空闲连接数，不得大于打开数 |
 | `DB_CONN_MAX_LIFETIME` | `30m` | 单连接最长复用时间 |
@@ -204,6 +206,8 @@ make build TARGET_PLATFORM=linux/arm64
 | `JWT_EXPIRE` | `24h` | 短期 JWT 有效期，Go duration 格式 |
 
 `APP_MODE=release` 时 Cookie 自动启用 `Secure`；debug/test 保持 HttpOnly 和 SameSite，但允许本地 HTTP 登录。
+
+本地宿主机 DSN 使用 `127.0.0.1:${MYSQL_PORT}`；Compose 内的应用使用 `mysql:3306`。Sealos 生产 DSN 必须来自平台 Secret，并使用 Guangzhou Managed MySQL External/Public Endpoint；完整切换流程见 [数据库跨区域迁移 Runbook](database-region-migration.md)。
 
 ## 关键设计理由
 

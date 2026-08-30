@@ -1,6 +1,6 @@
-.PHONY: dev test build db-up migrate-up migrate-down create-user create-qr-login docker-build docker-up docker-down
+.PHONY: dev test build db-up migrate-up migrate-down create-user create-qr-login db-preflight db-verify docker-build docker-up docker-down
 
-APP_VERSION ?= V1.0.0_20260822
+APP_VERSION ?= V1.0.1_20260830
 TARGET_PLATFORM ?= linux/amd64
 IMAGE ?= fluffy-cupcake:$(APP_VERSION)
 
@@ -32,6 +32,15 @@ create-user:
 create-qr-login:
 	@test -n "$(USERNAME)" || (echo "用法: make create-qr-login USERNAME=用户名" >&2; exit 1)
 	@set -a; . ./.env; set +a; go run ./cmd/create-qr-login --username "$(USERNAME)" $(QR_TEXT_FLAGS)
+
+# 对指定 OLD/NEW 数据库执行只读预检；连接信息通过环境变量提供，密码由终端隐藏读取。
+db-preflight:
+	@test -n "$(SIDE)" || (echo "用法: make db-preflight SIDE=OLD 或 SIDE=NEW" >&2; exit 1)
+	./scripts/db-migration/verify.sh preflight "$(SIDE)"
+
+# 对 OLD/NEW 生成只读快照并比较表、行数、Migration、索引、外键和 UTC 时间边界。
+db-verify:
+	./scripts/db-migration/verify.sh verify
 
 # 保留原命令名作为兼容别名，实际同样只构建 Linux 镜像。
 docker-build:

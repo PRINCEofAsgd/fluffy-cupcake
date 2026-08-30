@@ -4,7 +4,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
-ARG APP_VERSION=V1.0.0_20260822
+ARG APP_VERSION=V1.0.1_20260830
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 RUN --mount=type=cache,target=/go/pkg/mod \

@@ -4,6 +4,11 @@
 # 本地配置与编辑器文件
 .env
 .env.prod
+*.sql.gz
+*.dump
+db-migration-report/
+/db-migration-dumps/
+/fluffy_cupcake_backup*.sql
 .DS_Store
 .idea/
 .vscode/
