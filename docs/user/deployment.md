@@ -25,7 +25,15 @@ Production: Singapore Sealos App → Guangzhou Sealos Managed MySQL
 make build
 ```
 
-默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.0.1_20260830`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像采用多阶段交叉编译和无基础系统的 `scratch` 运行阶段，最终仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
+默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.0.7_20260830`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像先以 Node 22 构建 Homepage，再进行 Go 多阶段交叉编译；无基础系统的 `scratch` 运行阶段最终仍仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
+
+### V1.0.7 纯应用更新
+
+本版本只把 Homepage、`/yanlili` 和浏览器默认 favicon 回退统一为新的 PNG 站点图标，没有数据库结构、Migration、环境变量、Secret、端口、健康检查或持久化数据变化。生产数据库保持当前 `schema_migrations.version=6`、`dirty=0`，不需要执行 `migrate up`。
+
+部署时构建并推送新的不可变镜像标签，再把 Sealos Application 的镜像地址更新为该标签即可。保留现有 `DATABASE_DSN`、`JWT_SECRET`、`JWT_EXPIRE`、端口 `4819` 和健康检查配置；不需要额外部署资源或平台规则。
+
+更新完成后至少检查 `/healthz` 返回 200、`/` 展示 Homepage、`/yanlili` 可访问，并完成一次登录或 `/api/auth/me` 冒烟。建议使用新标签触发滚动发布；不要复用旧标签依赖平台强制拉取。
 
 ## 本地/独立单机 Compose
 
@@ -37,7 +45,7 @@ docker compose ps
 docker compose logs -f mysql app caddy
 ```
 
-首次 Migration 后使用 `make create-user USERNAME=用户名` 人工建立固定用户。DNS 生效且端口开放后，访问 `https://fluffy-cupcake.cn/yanlili`。生产 `APP_MODE=release` 会给认证 Cookie 增加 `Secure`；Caddy 提供的 HTTPS 仍是保护 JWT 不在传输中泄露的必要条件。
+首次 Migration 后使用 `make create-user USERNAME=用户名` 人工建立固定用户。DNS 生效且端口开放后，访问 `https://fluffy-cupcake.cn/` 查看 Homepage，想念页面位于 `/yanlili`。生产 `APP_MODE=release` 会给认证 Cookie 增加 `Secure`；Caddy 提供的 HTTPS 仍是保护 JWT 不在传输中泄露的必要条件。
 
 这些命令中的 `mysql:3306` 只在本 Compose 网络内有效。MySQL 数据保存在 `mysql_data`，证书与 Caddy 状态分别保存在命名卷中，更新容器不会丢失。应用不会自动执行 Migration，部署新版本前应先审阅并显式运行 `migrate up`。
 

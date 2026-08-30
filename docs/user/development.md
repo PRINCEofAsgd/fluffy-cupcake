@@ -3,12 +3,14 @@
 ## 环境要求
 
 - Go 1.26.3
+- Node.js 22 LTS 与 npm（Homepage 构建）
 - Docker 与 Docker Compose v2（MySQL 8.4 和 golang-migrate 工具容器）
 
 ## 安装依赖
 
 ```bash
 go mod download
+npm --prefix web/homepage ci
 ```
 
 Go 模块缓存由 Go 工具链管理；若需清理全部模块缓存，可运行 `go clean -modcache`，下次构建会重新下载。
@@ -133,7 +135,16 @@ make dev
 ./scripts/dev.sh
 ```
 
-`scripts/dev.sh` 会读取本地 `.env`，启动时创建一次 MySQL 连接池并 Ping。默认 `APP_ADDR=0.0.0.0:4819`，因此本机可通过 `localhost:4819` 访问，同一局域网设备也可通过开发机 IP 的 4819 端口访问。
+`make dev` 会先构建 Homepage，再由 `scripts/dev.sh` 读取本地 `.env`，启动时创建一次 MySQL 连接池并 Ping。默认 `APP_ADDR=0.0.0.0:4819`，因此本机可通过 `localhost:4819` 访问，同一局域网设备也可通过开发机 IP 的 4819 端口访问。根路径 `/` 是 Homepage，`/yanlili` 保留原想念页面。
+
+只调整 Homepage 时，可先单独构建或启动 Vite 预览：
+
+```bash
+make homepage-build
+npm --prefix web/homepage run dev
+```
+
+Vite 开发服务器同样以默认路径 `/` 打开 Homepage；`/homepage/*` 只保留为构建后的脚本、样式、字体和图片资源命名空间，不是页面入口。
 
 ```bash
 APP_ADDR=127.0.0.1:9090 make dev
@@ -184,7 +195,7 @@ go test ./...
 make build
 ```
 
-`make build` 默认构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V1.0.1_20260830`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
+`make build` 默认先用 Node 22 构建 Homepage，再构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V1.0.7_20260830`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
 
 ```bash
 make build TARGET_PLATFORM=linux/arm64

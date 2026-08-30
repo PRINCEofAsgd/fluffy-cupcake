@@ -1,10 +1,19 @@
-# 构建阶段固定 Go 工具链，并利用缓存加速依赖下载和重复构建。
+# Homepage 构建阶段固定 Node 工具链，并只输出可嵌入的静态资源。
+FROM node:22-alpine AS homepage-builder
+WORKDIR /src/web/homepage
+COPY web/homepage/package.json web/homepage/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY web/homepage/ ./
+RUN npm run build
+
+# Go 构建阶段固定工具链，并利用缓存加速依赖下载和重复构建。
 FROM --platform=$BUILDPLATFORM golang:1.26.3-alpine AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
-ARG APP_VERSION=V1.0.1_20260830
+COPY --from=homepage-builder /src/web/homepage/dist ./web/homepage/dist
+ARG APP_VERSION=V1.0.7_20260830
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 RUN --mount=type=cache,target=/go/pkg/mod \

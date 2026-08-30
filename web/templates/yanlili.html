@@ -7,6 +7,10 @@
   <meta name="description" content="按一下可爱按钮，把想念留给陪伴绑定对象。">
   <meta name="theme-color" content="#fff1d8">
   <title>想念按钮</title>
+  <!-- 所有页面统一使用根级站点图标，并通过版本参数刷新浏览器缓存。 -->
+  <link rel="icon" type="image/png" href="/favicon.png?v={{.Version}}">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png?v={{.Version}}">
+  <link rel="apple-touch-icon" href="/favicon.png?v={{.Version}}">
   <link rel="stylesheet" href="/assets/app.css?v={{.Version}}">
   <script src="/assets/qrdecoder.js?v={{.Version}}" defer></script>
   <script src="/assets/app.js?v={{.Version}}" defer></script>

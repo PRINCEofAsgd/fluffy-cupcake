@@ -6,7 +6,7 @@
 2. `database.Open` 解析 `DATABASE_DSN`，保留显式参数、为缺省连接/读/写超时各补 5 秒，创建全局连接池、强制 UTC 会话并执行 `PingContext`。
 3. `main` 调用 `server.NewRouter(cfg, db)`，组装 Repository、Service、Handler 和 Middleware。
 4. `server.NewRouter` 注册日志、恢复、安全响应头中间件及公开/受保护路由。
-5. `handler.NewPageHandler` 从 `web.Content` 解析模板并取得静态资源子文件系统。
+5. `handler.NewPageHandler` 从 `web.Content` 解析想念模板，并取得 Homepage 入口、全站图标及两类静态资源子文件系统。
 6. `http.Server.ListenAndServe` 默认监听 `0.0.0.0:4819`。
 7. 进程收到 SIGINT 或 SIGTERM 后，先关闭 HTTP 连接，再关闭 MySQL 连接池。
 
@@ -65,13 +65,22 @@
 4. 详细查询按用户对读取两个方向，把不同绑定实例和只有对象 ID 的迁移旧数据按分钟合并后 `UNION ALL`，固定 `LIMIT 20 OFFSET ...` 返回分页结果；响应不返回绑定实例 ID。
 5. Handler 返回 RFC3339 时间 JSON；浏览器只在显示分钟时转换为本地时间。
 
+## Homepage 调用链
+
+1. 浏览器请求默认路径 `GET /`，Gin 调用 `PageHandler.Home` 直接返回嵌入式 Vite `index.html`；根路径不重定向，旧 `/homepage/` 页面入口不再提供。
+2. 浏览器从 `/favicon.png` 加载全站统一图标，从 `/homepage/assets/*` 加载带哈希的 React/CSS 产物，并从 `/homepage/images/*`、`/homepage/fonts/*` 读取公开素材；Gin 对哈希产物使用 immutable 长缓存。
+3. 静态入口立即显示加载页及“页面参考 github.com/LeoninCS/Homepage 设计。”说明。
+4. `useResourceGate` 并发加载整页使用的全部图片并等待 `document.fonts.ready`，每完成一个任务即更新进度；全部完成前锁定滚动并隐藏正文。
+5. 资源全部解码后加载门渐隐，React 展示 Loki Yin 的头像、简介、身份、技术方向和公开联系方式；未提供的经历、项目、成果、爱好及 SEO 信息保留占位，导航和首屏入口可转到 `/yanlili`。
+6. Homepage 不调用新增 API 或数据库；但它与 `/yanlili` 仍由同一 Gin 进程提供，因此继承应用启动时的 MySQL 可用性要求。
+
 ## `/yanlili` 页面调用链
 
 1. 浏览器请求 `GET /yanlili`。
 2. Gin 依次执行请求日志、异常恢复和安全响应头中间件。
 3. `PageHandler.Yanlili` 用当前版本渲染 `web/templates/yanlili.html`。
-4. 浏览器继续请求 `/assets/miss-button.gif`、`/assets/app.css`、`/assets/qrdecoder.js` 和 `/assets/app.js`，页面不再下载 MP3。
-5. `PageHandler.Asset` 从嵌入式文件系统读取相应资源并附带缓存策略返回。
+4. 浏览器继续请求全站图标 `/favicon.png`、主按钮 `/assets/miss-button.gif`、`/assets/app.css`、`/assets/qrdecoder.js` 和 `/assets/app.js`，页面不再下载 MP3；未读取页面声明的客户端可回退到相同内容的 `/favicon.ico`。
+5. `PageHandler.SiteIcon` 返回统一 PNG，`PageHandler.Asset` 从嵌入式文件系统读取其余资源并附带缓存策略返回。
 6. `app.js:createFloatingMessage` 创建提示元素；`app.css:float-away` 立即让文字上浮渐隐。
 7. 文字进入 DOM 后，`app.js:playClickSound` 通过共享 `AudioContext` 为每次点击创建约 90ms 的独立合成声部；连续声部可重叠，共享限幅器避免叠加爆音。
 8. 主按钮始终可用；登录和当前绑定共同决定是否持久化点击，收件箱、绑定入口、备注、当前方向统计与详细历史各自独立显示。

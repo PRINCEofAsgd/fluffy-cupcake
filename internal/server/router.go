@@ -38,11 +38,12 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 	companionHandler := handler.NewCompanionHandler(companionService)
 	requireAuth := middleware.RequireAuth(cfg.Auth.CookieName, authService)
 
-	router.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusTemporaryRedirect, "/yanlili")
-	})
+	router.GET("/", pageHandler.Home)
+	router.GET("/favicon.png", pageHandler.SiteIcon)
+	router.GET("/favicon.ico", pageHandler.SiteIcon)
 	router.GET("/healthz", handler.Health)
 	router.GET("/yanlili", pageHandler.Yanlili)
+	router.GET("/homepage/*filepath", pageHandler.HomepageAsset)
 	router.GET("/assets/miss-button.gif", pageHandler.Asset("miss-button.gif", "image/gif", "public, max-age=86400"))
 	router.GET("/assets/miss-pop.mp3", pageHandler.Asset("miss-pop.mp3", "audio/mpeg", "public, max-age=86400"))
 	router.GET("/assets/app.css", pageHandler.Asset("app.css", "text/css; charset=utf-8", "public, max-age=3600"))

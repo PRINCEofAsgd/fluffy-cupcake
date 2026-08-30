@@ -3,7 +3,7 @@ package web
 
 import "embed"
 
-// Content 包含运行页面所需的全部模板、样式、脚本和图片。
+// Content 包含运行 Homepage、想念页面所需的全部模板、样式、脚本和图片。
 //
-//go:embed templates/*.html assets/*
+//go:embed templates/*.html assets/* homepage/dist/*
 var Content embed.FS

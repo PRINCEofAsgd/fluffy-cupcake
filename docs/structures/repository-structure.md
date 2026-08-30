@@ -39,8 +39,9 @@ fluffy-cupcake/
 │
 ├── migrations/                # golang-migrate 管理的 MySQL Up/Down 结构变更
 ├── web/
-│   ├── assets/                 # GIF、MP3、CSS 和 JavaScript 页面资源
+│   ├── assets/                 # 想念页 GIF、MP3、CSS 和 JavaScript 页面资源
 │   ├── templates/              # Go HTML 模板
+│   ├── homepage/               # React/Vite Homepage 源码、公开个人资料、占位资源与构建产物
 │   └── embed.go                # 资源嵌入入口
 │
 ├── deploy/caddy/               # 域名 HTTPS 反向代理配置
@@ -78,8 +79,15 @@ fluffy-cupcake/
 - `internal/handler/button_click.go`：点击参数解析、受保护写入与统计响应。
 - `internal/handler/companion.go`：绑定、收件箱、备注、解绑与历史对象 HTTP 边界。
 - `internal/server/router.go`：初始化 Gin，划分公开认证接口和受保护业务接口。
-- `internal/handler/page.go`：渲染页面、读取嵌入资源并返回健康状态。
-- `web/templates/yanlili.html`：页面语义结构与可访问性标记。
+- `internal/handler/page.go`：返回 Homepage、渲染想念页面、安全读取两类嵌入资源并返回健康状态。
+- `web/homepage/src/main.jsx`：参考授权实现的 Homepage 内容、完整资源加载门、滚动动效和脱敏占位区块。
+- `web/homepage/src/styles.css`：Homepage 森林首屏、产品化预览、叙事卡片、社媒轨道和响应式视觉规则。
+- `web/homepage/public/homepage/`：Homepage 的 `/homepage/*` 自托管字体、非个人装饰图、资料占位图和社交分享图。
+- `web/homepage/public/favicon.png`：从用户原图等比例缩放到 512×512，供所有页面和 `/favicon.ico` 回退共用的 PNG 站点图标。
+- `web/homepage/dist/`：Vite 生成的根路径入口及 `homepage/` 资源目录，由 Go `embed.FS` 一并打包。
+- `web/homepage/scripts/build-homepage.cjs`：清理并构建 Homepage，校验入口产物存在。
+- `web/homepage/package.json / package-lock.json`：Homepage Node 依赖、构建命令和锁定版本。
+- `web/templates/yanlili.html`：想念页面语义结构与可访问性标记。
 - `web/assets/app.css`：响应式布局、按钮反馈、文字上浮渐隐动画。
 - `web/assets/app.js`：始终可用的点击动画、可并发 Web Audio 合成音效、独立登录状态、持续摄像头取帧、相册图片受控缩放与多区域二维码识别，以及仅登录时的数据同步管理。
 - `web/assets/qrdecoder.js`：内置的 jsQR 二维码解码库，页面扫码登录使用，不依赖外部 CDN。
@@ -105,7 +113,7 @@ fluffy-cupcake/
 - `internal/version/version.go`
 - `README.md`
 - `docs/user/release-notes.md`
-- `Dockerfile` 的版本构建参数
+- `Dockerfile` 的版本构建参数及 Homepage Node 构建阶段
 - `compose.yaml` 的镜像标签和 `APP_VERSION` 构建参数
 - `Makefile` 的镜像标签
 - `scripts/build.sh` 的默认镜像版本

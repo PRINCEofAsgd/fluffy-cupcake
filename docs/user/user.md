@@ -1,11 +1,18 @@
 # 操作手册
 
+## 访问 Homepage
+
+- 本地开发：`http://localhost:4819/`
+- 正式环境：`https://fluffy-cupcake.cn/`
+
+根路径展示 Loki Yin 的个人 Homepage，浏览器标签标题为“Loki Yin's Homepage”，站点图标与 `/yanlili` 统一使用 fluffy-cupcake 图片，并包含完整资源加载进度、头像、个人简介、就读与技术方向，以及 GitHub、邮箱、微信、抖音联系入口。加载进度条下方会显示参考实现来源；尚未提供的经历、项目、兴趣与 SEO 信息继续使用占位，不包含参考作者个人信息。“给伴侣的点滴纪念”进入 `/yanlili`，“可向我申请内测账号”进入联系区。`/homepage/` 不再作为页面入口。
+
 ## 访问与登录
 
 - 本地开发：`http://localhost:4819/yanlili`
 - 正式环境：`https://fluffy-cupcake.cn/yanlili`
 
-根路径 `/` 会自动跳转到 `/yanlili`。未登录不影响按钮动画和音效，但点击只显示“按按钮，想你+1”，不会保存。页面右上角提供登录入口，项目不提供公开注册或找回密码。
+`/yanlili` 与 Homepage 使用相同的 fluffy-cupcake 站点图标。未登录不影响按钮动画和音效，但点击只显示“按按钮，想你+1”，不会保存。页面右上角提供登录入口，项目不提供公开注册或找回密码。
 
 ### 扫码登录
 

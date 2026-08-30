@@ -1,13 +1,95 @@
 package server
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/config"
 )
+
+// TestHomepage 验证根路径返回 Loki Yin Homepage，并保留资料占位、资源加载门、来源说明和独立安全策略。
+func TestHomepage(t *testing.T) {
+	router := NewRouter(config.Config{Mode: "test"}, nil)
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("状态码 = %d，期望 %d", response.Code, http.StatusOK)
+	}
+	if location := response.Header().Get("Location"); location != "" {
+		t.Fatalf("根路径不应重定向，实际 Location = %q", location)
+	}
+	body := response.Body.String()
+	for _, expected := range []string{
+		"<title>Loki Yin's Homepage</title>",
+		`href="/favicon.png?v=V1.0.7_20260830"`,
+		"页面参考 github.com/LeoninCS/Homepage 设计。",
+		"/homepage/images/fora-hero-foreground.png",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("Homepage 缺少 %q", expected)
+		}
+	}
+	for _, privateContent := range []string{"献超前", "xianchaoqian@foxmail.com", "MiniMax Cloud Infra"} {
+		if strings.Contains(body, privateContent) {
+			t.Fatalf("Homepage 仍包含参考作者个人信息 %q", privateContent)
+		}
+	}
+	if !strings.Contains(response.Header().Get("Content-Security-Policy"), "style-src 'self' 'unsafe-inline'") {
+		t.Fatal("Homepage CSP 必须允许页面自身的动态样式")
+	}
+	assetPath := regexp.MustCompile(`/homepage/assets/[^"']+\.js`).FindString(body)
+	if assetPath == "" {
+		t.Fatal("Homepage 缺少 Vite JavaScript 产物引用")
+	}
+	assetResponse := httptest.NewRecorder()
+	router.ServeHTTP(assetResponse, httptest.NewRequest(http.MethodGet, assetPath, nil))
+	if assetResponse.Code != http.StatusOK {
+		t.Fatalf("GET %s 状态码 = %d，期望 %d", assetPath, assetResponse.Code, http.StatusOK)
+	}
+	if !strings.Contains(assetResponse.Header().Get("Cache-Control"), "immutable") {
+		t.Fatal("带哈希的 Homepage 资源必须使用 immutable 缓存")
+	}
+	assetBody := assetResponse.Body.String()
+	for _, expected := range []string{
+		"Loki Yin",
+		"欢迎来到 Loki 的主页，这里记录了我的信息与经历，希望你能更好地了解我。",
+		"给伴侣的点滴纪念",
+		"可向我申请内测账号",
+		"4³ ❖ Blind National Top 30",
+		"3³ ❖ Blind sub60",
+		"HOK Jungle National Top 50",
+		"211 · CS | Go · Backend | AI Infra",
+		"CS 大四 · 中国矿业大学(北京) · 北京",
+		"中国矿业大学(北京) 计算机科学与技术 · 本科大四在读",
+		"后端研发 · AI Infra · 游戏服务端",
+		"Go · C++ · 分布式架构 · 云原生",
+		"https://github.com/PRINCEofAsgd",
+		"lokiyin4819@foxmail.com",
+		"Yyg1061",
+		"douyin.com/user/MS4wLjABAAAAqMBHTKsqMfKY5EldZgzCmvx6l3x-4sawM42QNPFn03LAB2oveG0wDDgPJNnDZNTa",
+	} {
+		if !strings.Contains(assetBody, expected) {
+			t.Fatalf("Homepage JavaScript 产物缺少公开资料 %q", expected)
+		}
+	}
+	for _, removed := range []string{"奖项成果", "#competition"} {
+		if strings.Contains(assetBody, removed) {
+			t.Fatalf("Homepage JavaScript 产物仍包含已删除的奖项入口或区块 %q", removed)
+		}
+	}
+	homepagePathResponse := httptest.NewRecorder()
+	router.ServeHTTP(homepagePathResponse, httptest.NewRequest(http.MethodGet, "/homepage/", nil))
+	if homepagePathResponse.Code != http.StatusNotFound {
+		t.Fatalf("旧 Homepage 页面路径状态码 = %d，期望 %d", homepagePathResponse.Code, http.StatusNotFound)
+	}
+}
 
 // TestYanliliPage 验证页面、按钮文案和安全响应头均正确返回。
 func TestYanliliPage(t *testing.T) {
@@ -25,6 +107,12 @@ func TestYanliliPage(t *testing.T) {
 	}
 	if strings.Contains(response.Body.String(), "/assets/miss-pop.mp3") {
 		t.Fatal("页面不应再加载 MP3，点击音效应由 Web Audio 合成")
+	}
+	if !strings.Contains(response.Body.String(), `href="/favicon.png?v=V1.0.7_20260830"`) {
+		t.Fatal("想念页面缺少全站统一 PNG 标签图标")
+	}
+	if strings.Contains(response.Body.String(), "/assets/miss-button.png") || strings.Contains(response.Body.String(), "loki-yin-avatar.png") {
+		t.Fatal("想念页面仍引用被替换的旧标签图标")
 	}
 	if !strings.Contains(response.Body.String(), `id="login-button"`) {
 		t.Fatal("页面缺少独立登录入口")
@@ -61,10 +149,17 @@ func TestHealthAndAsset(t *testing.T) {
 		contentType string
 	}{
 		{path: "/healthz", contentType: "application/json"},
+		{path: "/favicon.png", contentType: "image/png"},
+		{path: "/favicon.ico", contentType: "image/png"},
 		{path: "/assets/miss-button.gif", contentType: "image/gif"},
 		{path: "/assets/miss-pop.mp3", contentType: "audio/mpeg"},
 		{path: "/assets/app.js", contentType: "text/javascript"},
 		{path: "/assets/qrdecoder.js", contentType: "text/javascript"},
+		{path: "/homepage/images/profile-placeholder.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/loki-yin-avatar.png", contentType: "image/png"},
+		{path: "/homepage/images/github-mark.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/sealos.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/vion-tech.png", contentType: "image/png"},
 	} {
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
@@ -76,6 +171,23 @@ func TestHealthAndAsset(t *testing.T) {
 		if !strings.Contains(response.Header().Get("Content-Type"), testCase.contentType) {
 			t.Fatalf("GET %s Content-Type = %q", testCase.path, response.Header().Get("Content-Type"))
 		}
+	}
+}
+
+// TestSiteIconFallback 验证显式 PNG 地址与浏览器默认 ICO 回退返回同一份全站图标。
+func TestSiteIconFallback(t *testing.T) {
+	router := NewRouter(config.Config{Mode: "test"}, nil)
+	responses := make([][]byte, 0, 2)
+	for _, iconPath := range []string{"/favicon.png", "/favicon.ico"} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, iconPath, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("GET %s 状态码 = %d，期望 %d", iconPath, response.Code, http.StatusOK)
+		}
+		responses = append(responses, response.Body.Bytes())
+	}
+	if !bytes.Equal(responses[0], responses[1]) {
+		t.Fatal("/favicon.png 与 /favicon.ico 未返回同一份图标")
 	}
 }
 

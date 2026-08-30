@@ -10,6 +10,7 @@ fluffy_cupcake_backup*.sql
 .vscode
 bin
 dist
+web/homepage/node_modules
 coverage.out
 *.test
 docs/record/context-archives

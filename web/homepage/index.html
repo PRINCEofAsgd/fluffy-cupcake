@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <!-- 本页面是 Homepage 的静态入口，负责 SEO 占位、首屏加载器和 React 挂载点。 -->
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="/favicon.png?v=V1.0.7_20260830" />
+  <link rel="shortcut icon" type="image/png" href="/favicon.png?v=V1.0.7_20260830" />
+  <link rel="apple-touch-icon" href="/favicon.png?v=V1.0.7_20260830" />
+  <link rel="preload" as="image" href="/homepage/images/fora-hero-far.png" fetchpriority="high" />
+  <link rel="preload" as="image" href="/homepage/images/fora-hero-mid.png" fetchpriority="high" />
+  <link rel="preload" as="image" href="/homepage/images/fora-hero-foreground.png" fetchpriority="high" />
+  <link rel="preload" as="image" href="/homepage/images/loki-yin-avatar.png" fetchpriority="high" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#20292c" />
+
+  <title>Loki Yin's Homepage</title>
+  <meta name="description" content="个人主页内容待填写：个人信息、经历、项目、兴趣与联系方式。" />
+  <meta name="author" content="YOUR NAME" />
+  <meta name="keywords" content="YOUR NAME, 个人主页, 项目经历, 兴趣爱好" />
+  <meta name="robots" content="index, follow" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="YOUR NAME · Personal Homepage" />
+  <meta property="og:description" content="个人主页内容待填写。" />
+  <meta property="og:url" content="https://fluffy-cupcake.cn/" />
+  <meta property="og:site_name" content="YOUR NAME · Personal Homepage" />
+  <meta property="og:image" content="https://fluffy-cupcake.cn/homepage/og.png" />
+  <meta property="og:locale" content="zh_CN" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="YOUR NAME · Personal Homepage" />
+  <meta name="twitter:description" content="个人主页内容待填写。" />
+  <meta name="twitter:image" content="https://fluffy-cupcake.cn/homepage/og.png" />
+
+  <style>
+    .sr-only-seo {
+      position: fixed !important;
+      inset: 0 auto auto 0 !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+      clip-path: inset(50%) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+      pointer-events: none !important;
+      contain: strict !important;
+    }
+
+    #boot-loader {
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      display: grid;
+      place-items: center;
+      color: #fff3f0;
+      background:
+        radial-gradient(ellipse at 50% 22%, rgba(161, 129, 133, 0.64), transparent 48%),
+        linear-gradient(180deg, #1b2228 0%, #10120f 58%, #020302 100%);
+    }
+
+    #boot-loader::before {
+      position: absolute;
+      inset: auto 0 0;
+      height: min(46vw, 420px);
+      background: url("/homepage/images/fora-hero-foreground.png") center bottom / 100% 100% no-repeat;
+      opacity: 0.36;
+      filter: sepia(0.12) saturate(1.2) contrast(1.18) brightness(0.48);
+      content: "";
+    }
+
+    #boot-loader .startup-loader-inner {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      justify-items: center;
+      gap: 18px;
+      width: min(340px, calc(100% - 64px));
+    }
+
+    #boot-loader span {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: clamp(32px, 7vw, 56px);
+      font-weight: 400;
+      line-height: 1;
+      text-align: center;
+    }
+
+    #boot-loader strong,
+    #boot-loader small {
+      color: rgba(255, 255, 255, 0.68);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 520;
+      text-align: center;
+    }
+
+    #boot-loader small {
+      color: rgba(255, 255, 255, 0.54);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    #boot-loader .startup-progress {
+      width: 100%;
+      height: 3px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+    }
+
+    #boot-loader .startup-progress i {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #f2d7bd, #b8e8dd);
+      transform-origin: left center;
+      transform: scaleX(0);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="boot-loader" role="status" aria-live="polite" aria-label="页面资源加载中">
+    <div class="startup-loader-inner">
+      <span>Loki Yin's Profile</span>
+      <div class="startup-progress" aria-hidden="true">
+        <i></i>
+      </div>
+      <strong>Loading</strong>
+      <small>页面参考 github.com/LeoninCS/Homepage 设计。</small>
+    </div>
+  </div>
+
+  <main id="seo-content" class="sr-only-seo" aria-hidden="true">
+    <h1>YOUR NAME · Personal Homepage</h1>
+    <p>个人简介、经历、项目、兴趣爱好和联系方式均待填写。</p>
+  </main>
+
+  <noscript>请启用 JavaScript 体验个人主页。</noscript>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
+</html>

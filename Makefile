@@ -1,14 +1,23 @@
-.PHONY: dev test build db-up migrate-up migrate-down create-user create-qr-login db-preflight db-verify docker-build docker-up docker-down
+.PHONY: dev test build homepage-build db-up migrate-up migrate-down create-user create-qr-login db-preflight db-verify docker-build docker-up docker-down
 
-APP_VERSION ?= V1.0.1_20260830
+APP_VERSION ?= V1.0.7_20260830
 TARGET_PLATFORM ?= linux/amd64
 IMAGE ?= fluffy-cupcake:$(APP_VERSION)
 
 # 本地开发时监听全部网口的 4819 端口。
-dev:
+HOMEPAGE_DEPS_STAMP := web/homepage/node_modules/.package-lock.json
+
+$(HOMEPAGE_DEPS_STAMP): web/homepage/package.json web/homepage/package-lock.json
+	npm --prefix web/homepage ci
+
+# 构建脱敏 Homepage，并把 Vite 产物交给 Go embed 打包。
+homepage-build: $(HOMEPAGE_DEPS_STAMP)
+	npm --prefix web/homepage run build
+
+dev: homepage-build
 	./scripts/dev.sh
 
-test:
+test: homepage-build
 	go test ./...
 
 build:
