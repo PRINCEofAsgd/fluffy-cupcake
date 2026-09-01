@@ -25,11 +25,11 @@ Production: Singapore Sealos App → Guangzhou Sealos Managed MySQL
 make build
 ```
 
-默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.0.7_20260830`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像先以 Node 22 构建 Homepage，再进行 Go 多阶段交叉编译；无基础系统的 `scratch` 运行阶段最终仍仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
+默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.1.0_20260901`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像先以 Node 22 构建 Homepage，再进行 Go 多阶段交叉编译；无基础系统的 `scratch` 运行阶段最终仍仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
 
-### V1.0.7 纯应用更新
+### V1.1.0 纯应用更新
 
-本版本只把 Homepage、`/yanlili` 和浏览器默认 favicon 回退统一为新的 PNG 站点图标，没有数据库结构、Migration、环境变量、Secret、端口、健康检查或持久化数据变化。生产数据库保持当前 `schema_migrations.version=6`、`dirty=0`，不需要执行 `migrate up`。
+本版本细化 Homepage 的彩色章节标题、文安智能实习与 Sealos 开源经历文案，并优化主机辅助取景、圆角裁切和 10 枚技术栈 Logo 的统一尺寸与分布；没有数据库结构、Migration、环境变量、Secret、端口、健康检查或持久化数据变化。生产数据库保持当前 `schema_migrations.version=6`、`dirty=0`，不需要执行 `migrate up`。
 
 部署时构建并推送新的不可变镜像标签，再把 Sealos Application 的镜像地址更新为该标签即可。保留现有 `DATABASE_DSN`、`JWT_SECRET`、`JWT_EXPIRE`、端口 `4819` 和健康检查配置；不需要额外部署资源或平台规则。
 

@@ -1,6 +1,6 @@
 .PHONY: dev test build homepage-build db-up migrate-up migrate-down create-user create-qr-login db-preflight db-verify docker-build docker-up docker-down
 
-APP_VERSION ?= V1.0.7_20260830
+APP_VERSION ?= V1.1.0_20260901
 TARGET_PLATFORM ?= linux/amd64
 IMAGE ?= fluffy-cupcake:$(APP_VERSION)
 

@@ -195,7 +195,7 @@ go test ./...
 make build
 ```
 
-`make build` 默认先用 Node 22 构建 Homepage，再构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V1.0.7_20260830`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
+`make build` 默认先用 Node 22 构建 Homepage，再构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V1.1.0_20260901`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
 
 ```bash
 make build TARGET_PLATFORM=linux/arm64

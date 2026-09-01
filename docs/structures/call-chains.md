@@ -71,8 +71,9 @@
 2. 浏览器从 `/favicon.png` 加载全站统一图标，从 `/homepage/assets/*` 加载带哈希的 React/CSS 产物，并从 `/homepage/images/*`、`/homepage/fonts/*` 读取公开素材；Gin 对哈希产物使用 immutable 长缓存。
 3. 静态入口立即显示加载页及“页面参考 github.com/LeoninCS/Homepage 设计。”说明。
 4. `useResourceGate` 并发加载整页使用的全部图片并等待 `document.fonts.ready`，每完成一个任务即更新进度；全部完成前锁定滚动并隐藏正文。
-5. 资源全部解码后加载门渐隐，React 展示 Loki Yin 的头像、简介、身份、技术方向和公开联系方式；未提供的经历、项目、成果、爱好及 SEO 信息保留占位，导航和首屏入口可转到 `/yanlili`。
-6. Homepage 不调用新增 API 或数据库；但它与 `/yanlili` 仍由同一 Gin 进程提供，因此继承应用启动时的 MySQL 可用性要求。
+5. 资源全部解码后加载门渐隐，React 展示 Loki Yin 的头像、简介、身份、技术方向、两段工作经历、四个项目经历、四项爱好及公开联系方式；主机用原作者的单一背景层加载重新取景的抹茶与蛋糕宽幅照片，左侧导航用半透明暗色覆盖形成副屏，10 枚自托管技术栈 SVG 以错落层次漂浮。
+6. 经历组件直接复用原作者 MiniMax 品牌控制台与 Sealos 流程控制台，并在桌面端保持左右对称；项目标签按 Fluffy Cupcake、Reactor Web、My Dock、Card Game 排列并直接显示项目名，网易云音乐入口直达公开艺人主页。
+7. Homepage 不调用新增 API 或数据库；但它与 `/yanlili` 仍由同一 Gin 进程提供，因此继承应用启动时的 MySQL 可用性要求。
 
 ## `/yanlili` 页面调用链
 

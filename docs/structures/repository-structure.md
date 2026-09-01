@@ -14,6 +14,7 @@
 - `docs/user/release-notes.md`：当前发布版本和用户可见改动。
 - `docs/record/project-context.md`：当前阶段工作记录与上一阶段归档入口。
 - `docs/record/context-archives/initial-release-stage.md`：2026-08-14 至 2026-08-22 的初版上线阶段完整工作记录。
+- `docs/record/context-archives/homepage-development-and-standardized-deployment-stage.md`：2026-08-30 至 2026-09-01 的 Homepage 开发与规范化部署阶段完整工作记录。
 - `docs/record/context-archives/`：仅在明确要求归档阶段时保存历史上下文。
 - `scripts/README.md`：辅助脚本说明。
 
@@ -80,9 +81,11 @@ fluffy-cupcake/
 - `internal/handler/companion.go`：绑定、收件箱、备注、解绑与历史对象 HTTP 边界。
 - `internal/server/router.go`：初始化 Gin，划分公开认证接口和受保护业务接口。
 - `internal/handler/page.go`：返回 Homepage、渲染想念页面、安全读取两类嵌入资源并返回健康状态。
-- `web/homepage/src/main.jsx`：参考授权实现的 Homepage 内容、完整资源加载门、滚动动效和脱敏占位区块。
+- `web/homepage/src/main.jsx`：参考授权实现的 Homepage 内容、工作/项目/爱好数据、完整资源加载门和滚动动效。
 - `web/homepage/src/styles.css`：Homepage 森林首屏、产品化预览、叙事卡片、社媒轨道和响应式视觉规则。
-- `web/homepage/public/homepage/`：Homepage 的 `/homepage/*` 自托管字体、非个人装饰图、资料占位图和社交分享图。
+- `web/homepage/public/homepage/`：Homepage 的 `/homepage/*` 自托管字体、非个人装饰图、从用户照片重新取景的单层主机背景、资料占位图和社交分享图。
+- `web/homepage/public/homepage/images/tech-stack/`：首屏使用的 10 枚自托管技术栈 SVG 及 Docker 图标来源说明。
+- `web/homepage/public/homepage/images/experience/`：经历品牌面板使用的 Vion Tech Icon 与 VionVision WordMark SVG。
 - `web/homepage/public/favicon.png`：从用户原图等比例缩放到 512×512，供所有页面和 `/favicon.ico` 回退共用的 PNG 站点图标。
 - `web/homepage/dist/`：Vite 生成的根路径入口及 `homepage/` 资源目录，由 Go `embed.FS` 一并打包。
 - `web/homepage/scripts/build-homepage.cjs`：清理并构建 Homepage，校验入口产物存在。
@@ -105,6 +108,7 @@ fluffy-cupcake/
 - `docs/user/database-region-migration.md`：跨区域全库 dump/restore、生产切换、冒烟、观察、回滚和旧库下线操作手册。
 - `docs/record/project-context.md`：记录当前阶段状态，并指向已经收口的阶段归档。
 - `docs/record/context-archives/initial-release-stage.md`：保存初版上线阶段 Step 1–5 的目标、实现、验证和后续事项。
+- `docs/record/context-archives/homepage-development-and-standardized-deployment-stage.md`：保存 Homepage 开发与规范化部署阶段 Step 6–8 的最终目标、实现、验证和后续事项。
 
 ## 版本记录位置
 

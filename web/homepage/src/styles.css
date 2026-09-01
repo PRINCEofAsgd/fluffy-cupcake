@@ -546,16 +546,18 @@ body.is-scrolled .top-nav {
   will-change: transform;
 }
 
-.mock-color-field {
+.mock-screen-background {
   position: absolute;
   inset: 0 0 0 220px;
   z-index: 0;
   width: calc(100% - 220px);
   height: 100%;
-  opacity: 0.72;
-  filter: saturate(0.94) contrast(1.02) brightness(0.98);
-  animation: none;
+  object-fit: cover;
+  object-position: center 58%;
+  opacity: 0.9;
+  filter: saturate(0.88) contrast(1.04) brightness(0.68);
   transform: translateZ(0) scale(1.02);
+  user-select: none;
 }
 
 .product-mockup::before,
@@ -2130,7 +2132,7 @@ body.is-scrolled .top-nav {
     border-radius: 24px;
   }
 
-  .mock-color-field {
+  .mock-screen-background {
     inset: 228px 0 0;
     width: 100%;
     height: calc(100% - 228px);
@@ -3806,7 +3808,7 @@ body.is-scrolled .top-nav {
     transform: none;
   }
 
-  .mock-color-field {
+  .mock-screen-background {
     inset: 110px 0 0;
     width: 100%;
     height: calc(100% - 110px);
@@ -4194,10 +4196,9 @@ body.is-scrolled .top-nav {
     inset 0 -120px 160px rgba(0, 0, 0, 0.5);
 }
 
-.mock-color-field {
-  opacity: 0.76;
-  filter: saturate(0.96) contrast(1.02) brightness(0.99);
-  animation: none;
+.mock-screen-background {
+  opacity: 0.94;
+  filter: saturate(0.88) contrast(1.05) brightness(0.72);
 }
 
 .product-mockup::before {
@@ -4324,7 +4325,7 @@ body.is-scrolled .top-nav {
     min-height: 590px;
   }
 
-  .mock-color-field {
+  .mock-screen-background {
     inset: 0 0 0 48px;
     width: calc(100% - 48px);
     height: 100%;
@@ -5253,7 +5254,7 @@ body.is-scrolled .top-nav {
   background: #ff2442;
 }
 
-/* 当前公开联系方式使用 GitHub、邮箱、微信与抖音各自的识别色。 */
+/* 当前公开联系方式使用各平台的识别色。 */
 .faq-section .social-strip a.social-email span {
   color: #1f2a30;
   background: #f0f6fc;
@@ -5267,6 +5268,11 @@ body.is-scrolled .top-nav {
 .faq-section .social-strip a.social-douyin span {
   color: #ffffff;
   background: linear-gradient(135deg, #25f4ee 0%, #151515 42%, #151515 58%, #fe2c55 100%);
+}
+
+.faq-section .social-strip a.social-netease span {
+  color: #ffffff;
+  background: #e60026;
 }
 
 @media (max-width: 1180px) {
@@ -5424,7 +5430,8 @@ body.is-scrolled .top-nav {
 
 .faq-section .social-strip a.social-email .social-orbit-card,
 .faq-section .social-strip a.social-wechat .social-orbit-card,
-.faq-section .social-strip a.social-douyin .social-orbit-card {
+.faq-section .social-strip a.social-douyin .social-orbit-card,
+.faq-section .social-strip a.social-netease .social-orbit-card {
   color: rgba(255, 247, 242, 0.92);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.018)),
@@ -5469,6 +5476,11 @@ body.is-scrolled .top-nav {
 .faq-section .social-strip a.social-douyin .social-orbit-card > span {
   color: #ffffff;
   background: linear-gradient(135deg, #25f4ee 0%, #151515 42%, #151515 58%, #fe2c55 100%);
+}
+
+.faq-section .social-strip a.social-netease .social-orbit-card > span {
+  color: #ffffff;
+  background: #e60026;
 }
 
 @keyframes social-ring-spin {
@@ -5538,7 +5550,8 @@ body.is-scrolled .top-nav {
 
 .faq-section .social-strip a.social-email .social-orbit-card,
 .faq-section .social-strip a.social-wechat .social-orbit-card,
-.faq-section .social-strip a.social-douyin .social-orbit-card {
+.faq-section .social-strip a.social-douyin .social-orbit-card,
+.faq-section .social-strip a.social-netease .social-orbit-card {
   width: 100%;
   height: auto;
   aspect-ratio: auto;
@@ -5719,5 +5732,278 @@ body.is-scrolled .top-nav {
 
   .faq-section .social-orbit-card {
     transform: rotate(calc(-1 * var(--social-angle)));
+  }
+}
+
+/* 技术栈 Logo 以错落的大小、角度和高度围绕资料卡漂浮，恢复初版提案的层次感。 */
+.mock-tech-stack {
+  position: absolute;
+  inset: 0 0 0 220px;
+  z-index: 5;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+}
+
+.mock-tech-logo {
+  position: absolute;
+  top: var(--logo-y);
+  left: var(--logo-x);
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--logo-size);
+  height: var(--logo-size);
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.74);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 12px 28px rgba(31, 24, 19, 0.2),
+    inset 0 1px rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(9px);
+  animation: mock-tech-float var(--logo-duration) ease-in-out var(--logo-delay) infinite alternate;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) rotate(var(--logo-tilt));
+  will-change: transform;
+}
+
+.mock-tech-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.mock-tech-logo:hover {
+  z-index: 2;
+  animation-play-state: paused;
+}
+
+.mock-tech-logo:hover img {
+  filter: saturate(1.12);
+  transform: scale(1.12);
+}
+
+.mock-panel {
+  z-index: 6;
+}
+
+.story-note-link {
+  display: inline-flex;
+  width: fit-content;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+  text-underline-offset: 5px;
+}
+
+.story-note-link:hover {
+  text-decoration-color: currentColor;
+}
+
+@keyframes mock-tech-float {
+  from {
+    transform: translate(-50%, calc(-50% - 5px)) rotate(var(--logo-tilt));
+  }
+
+  to {
+    transform: translate(-50%, calc(-50% + 5px)) rotate(var(--logo-tilt));
+  }
+}
+
+@media (max-width: 560px) {
+  .mock-tech-stack {
+    inset: 0 0 0 48px;
+  }
+
+  .mock-tech-logo {
+    width: var(--logo-mobile-size);
+    height: var(--logo-mobile-size);
+    padding: 5px;
+    border-radius: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mock-tech-logo {
+    animation: none;
+    transform: translate(-50%, -50%) rotate(var(--logo-tilt));
+  }
+}
+
+/* 首屏沿用原作者的单背景层实现；宽幅照片从右侧主体延伸至左侧暗化导航区。 */
+.mock-screen-background {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 18px 18px 0 0;
+  opacity: 0.94;
+  filter: saturate(0.88) contrast(1.04) brightness(0.76);
+  clip-path: inset(0 round 18px 18px 0 0);
+  transform: translateZ(0);
+}
+
+.mock-sidebar {
+  isolation: isolate;
+  background: rgba(9, 11, 12, 0.5);
+  backdrop-filter: blur(2px) saturate(0.68);
+}
+
+.mock-sidebar::before {
+  z-index: 0;
+  background:
+    linear-gradient(160deg, rgba(9, 11, 12, 0.58), rgba(5, 7, 8, 0.82)),
+    linear-gradient(108deg, rgba(255, 255, 255, 0.08), transparent 30%),
+    url("/homepage/images/matcha-cake-screen-wide.jpg") 66% 26% / auto 118% no-repeat;
+  filter: saturate(0.52) contrast(1.04) brightness(0.7);
+}
+
+.mock-sidebar > * {
+  position: relative;
+  z-index: 1;
+}
+
+.mock-sidebar::after {
+  z-index: 2;
+}
+
+/* 文安品牌锁定区沿用原作者的白底 Logo 卡片，并移入左栏公司信息下方。 */
+.experience-copy-brand {
+  display: grid;
+  gap: 18px;
+  margin-top: 28px;
+}
+
+.experience-copy-brand .minimax-logo.vion-logo {
+  display: flex;
+  gap: 12px;
+  width: min(280px, 100%);
+  height: 64px;
+  padding: 10px 16px;
+}
+
+.vion-logo .vion-logo-icon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+}
+
+.vion-logo .vion-logo-wordmark {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  height: 34px;
+  object-fit: contain;
+}
+
+.experience-copy-brand > strong {
+  width: fit-content;
+  margin: 0;
+  background: linear-gradient(96deg, #f8f5ff 0%, #d8ceff 58%, #9caef7 112%);
+  color: transparent;
+  font-size: clamp(30px, 2.7vw, 42px);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Vion 右栏复用 Sealos 的流程与职责层级，只替换为淡紫蓝品牌色。 */
+.vion-console {
+  border-color: rgba(172, 158, 235, 0.24);
+  background:
+    linear-gradient(180deg, rgba(169, 154, 232, 0.1), rgba(255, 255, 255, 0.012) 30%),
+    rgba(10, 10, 18, 0.84);
+}
+
+.vion-console-head > span {
+  color: rgba(221, 215, 255, 0.66);
+}
+
+.vion-console-head > i {
+  color: rgba(206, 199, 255, 0.82);
+}
+
+.vion-console-head > i b {
+  background: #b5a7f1;
+  box-shadow: 0 0 12px rgba(181, 167, 241, 0.72);
+}
+
+.vion-flow > span {
+  border-color: rgba(181, 167, 241, 0.2);
+  background:
+    linear-gradient(145deg, rgba(181, 167, 241, 0.1), rgba(118, 137, 218, 0.035)),
+    rgba(255, 255, 255, 0.025);
+}
+
+.vion-flow > i {
+  color: rgba(181, 167, 241, 0.62);
+}
+
+.vion-capabilities article {
+  border-color: rgba(181, 167, 241, 0.16);
+  background:
+    linear-gradient(90deg, rgba(181, 167, 241, 0.06), transparent 42%),
+    rgba(255, 255, 255, 0.028);
+}
+
+.vion-capabilities header span {
+  color: #d5ccff;
+}
+
+.vion-capabilities time {
+  color: rgba(181, 189, 255, 0.62);
+}
+
+#internship .minimax-card {
+  border-color: rgba(185, 173, 239, 0.18);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(180, 164, 236, 0.11), transparent 34%),
+    linear-gradient(145deg, #17171d 0%, #11131a 58%, #0e1017 100%);
+}
+
+#internship .minimax-card .get-copy > span::before {
+  background: linear-gradient(135deg, #d8ceff, #aa9ae8 58%, #7f9bea);
+  box-shadow: 0 0 16px rgba(170, 154, 232, 0.4);
+}
+
+#internship .minimax-card .experience-meta b {
+  background: linear-gradient(96deg, #fbf9ff 0%, #d9d0ff 70%, #aab7f5 112%);
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 三个区块复用原作者副标题的暖色到薄荷色文字渐变。 */
+#internship .split-heading h2,
+#projects .split-heading h2,
+#hobbies .split-heading h2 {
+  background: linear-gradient(96deg, var(--type-warm) 0%, #d7d9cb 44%, var(--type-mint) 100%);
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 桌面端为工作经历主标题保留单行宽度，窄屏仍按原作者响应式规则换行。 */
+@media (min-width: 981px) {
+  #internship .split-heading {
+    grid-template-columns: minmax(720px, 1fr) minmax(260px, 0.45fr);
+    gap: 36px;
+  }
+
+  #internship .split-heading h2 {
+    font-size: clamp(36px, 3.25vw, 52px);
+    white-space: nowrap;
   }
 }

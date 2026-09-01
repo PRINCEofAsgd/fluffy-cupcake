@@ -77,7 +77,7 @@
 - 浏览器以临时双向绑定验证收件箱仅显示一个“解绑”按钮，普通路线完成后只显示“等待对方接受解绑”；跨零点摘要实际渲染为 8 月 16 日 106 次和 8 月 15 日 30 次，最近分钟与每日日期一致。
 - 真实 HTTP 先返回 `inactive_confirmation_required`，带额外确认重发同一接口后返回 `directly_ended`；QA 用户、绑定、点击和临时 Cookie 均已清理。
 - `make build` 成功生成 `linux/amd64` 镜像 `fluffy-cupcake:V0.0.8_20260816`，manifest list 摘要为 `sha256:72a58f817446826cb672bfd90b8fef298d7dad864c855f3c7f2e4a8a273d1e92`。
-- Sealos 生产库已手工完成 `version=3 → 4`，精确删除 `yanlili → xiaodangao` 在北京时间 2026-08-16 00:03 的 2 次记录；双向核对确认原173次摘要属于反方向，现按本地日期正确拆为 8 月 16 日104次和 8 月 15 日69次。
+- 生产库已手工完成 `version=3 → 4`，并对一组历史方向数据完成脱敏校正与双向核对；最终每日摘要按本地日期和方向正确归集。
 - 经用户明确授权，`linux/amd64` 镜像已推送至 `docker.io/princeofasgd/fluffy-cupcake:V0.0.8_20260816`，远端摘要为 `sha256:72a58f817446826cb672bfd90b8fef298d7dad864c855f3c7f2e4a8a273d1e92`；未覆盖 `latest`。
 - `go test ./...` 与 `node --check web/assets/app.js` 通过，覆盖方向隔离、未绑定拒绝、备注长度/自绑定、30 天截止时间、HTTP 鉴权与关系写入 SQL。
 - 真实 MySQL 8.4 成功执行 `000003 up → down → up`，Migration 最终为 `version=3, dirty=0`，回滚往返前后原点击行数与总次数均保持 `1/10`。

@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as ReactDOMClient from 'react-dom/client';
 import Lenis from 'lenis';
 import { FaEnvelope, FaGithub, FaWeixin } from 'react-icons/fa6';
-import { SiTiktok } from 'react-icons/si';
+import { SiNeteasecloudmusic, SiTiktok } from 'react-icons/si';
 import 'lenis/dist/lenis.css';
 import './styles.css';
 import { getScrollTuning } from './scrollTuning.js';
@@ -12,48 +12,72 @@ import { getScrollTuning } from './scrollTuning.js';
 const homepageBase = '/homepage';
 const placeholderImage = `${homepageBase}/images/profile-placeholder.svg`;
 const avatarImage = `${homepageBase}/images/loki-yin-avatar.png`;
+const screenBackgroundImage = `${homepageBase}/images/matcha-cake-screen-wide.jpg`;
+const vionIcon = `${homepageBase}/images/experience/vion-tech.svg`;
+const vionWordmark = `${homepageBase}/images/experience/vionvision-wordmark.svg`;
+const sealosLogo = `${homepageBase}/images/sealos.svg`;
 const mockMemberIcons = [
   { src: `${homepageBase}/images/github-mark.svg`, alt: 'GitHub' },
   { src: `${homepageBase}/images/sealos.svg`, alt: 'Sealos' },
   { src: `${homepageBase}/images/vion-tech.png`, alt: 'Vion Tech' },
 ];
 
+// 技术栈 Logo 使用统一紧凑托盘，并保留初版提案的轻微倾角和不规则环绕布局。
+const techStackIcons = [
+  { name: 'Go', file: 'go.svg', x: 8, y: 23, size: 50, tilt: -2.4, duration: 3.8, delay: -1.2 },
+  { name: 'Prometheus', file: 'prometheus.svg', x: 25, y: 10, size: 50, tilt: 1.8, duration: 4, delay: -2.9 },
+  { name: 'Loki', file: 'loki.svg', x: 48, y: 5, size: 50, tilt: -1.2, duration: 5, delay: -4.4 },
+  { name: 'Docker', file: 'docker.svg', x: 84, y: 8, size: 50, tilt: 2.6, duration: 5.1, delay: -4.1 },
+  { name: 'C++', file: 'cpp.svg', x: 95, y: 25, size: 50, tilt: -2, duration: 4.4, delay: -2.6 },
+  { name: 'MySQL', file: 'mysql.svg', x: 34, y: 30, size: 50, tilt: 2.2, duration: 4.9, delay: -3.3 },
+  { name: 'Redis', file: 'redis.svg', x: 91, y: 31, size: 50, tilt: -1.6, duration: 3.5, delay: -0.7 },
+  { name: 'Kafka', file: 'kafka.svg', x: 7, y: 43, size: 50, tilt: -2.8, duration: 4.2, delay: -2 },
+  { name: 'Kubernetes', file: 'kubernetes.svg', x: 68, y: 20, size: 50, tilt: 2.4, duration: 3.6, delay: -1.8 },
+  { name: 'Nginx', file: 'nginx.svg', x: 78, y: 35, size: 50, tilt: 1.2, duration: 4.7, delay: -3.6 },
+].map((icon) => ({
+  ...icon,
+  src: `${homepageBase}/images/tech-stack/${icon.file}`,
+}));
+
 const projects = [
   {
-    label: 'Project 01',
-    title: '项目名称待填写',
-    caption: '请提供项目背景、解决的问题、你的职责和最终结果。',
-    href: '#projects',
-    stack: ['技术栈 A', '技术栈 B', '技术栈 C'],
-    highlights: ['核心能力待填写', '个人职责待填写', '成果数据待填写'],
-    preview: ['输入', '处理', '输出'],
+    slug: 'fluffy-cupcake',
+    title: 'Fluffy Cupcake',
+    caption: '为伴侣互动与纪念设计的轻量 Web 服务，提供登录、陪伴绑定、双向想念记录与个人 Homepage。',
+    href: '/yanlili',
+    stack: ['Go', 'Gin', 'MySQL', 'React'],
+    highlights: ['100+ 日活', '双向陪伴关系', '分钟桶记录'],
+    preview: ['互动输入', '服务端聚合', '关系记录'],
   },
   {
-    label: 'Project 02',
-    title: '项目名称待填写',
-    caption: '请提供项目定位、使用场景、技术方案和可公开访问的链接。',
-    href: '#projects',
-    stack: ['技术栈 A', '技术栈 B', '技术栈 C'],
-    highlights: ['核心能力待填写', '个人职责待填写', '成果数据待填写'],
-    preview: ['需求', '方案', '交付'],
+    slug: 'reactor-web',
+    title: 'Reactor Web',
+    caption: '面向 Linux 的轻量高性能网络服务框架，以 Reactor + Epoll ET + 非阻塞 IO 组织多 Reactor、线程池与连接生命周期。',
+    href: 'https://github.com/PRINCEofAsgd/-Reactor-Web-',
+    external: true,
+    stack: ['C++11', 'Reactor', 'Epoll ET', 'HTTP / RPC'],
+    highlights: ['150k 并发请求', '20k 业务请求', '0.03% 错误率'],
+    preview: ['事件接入', 'Reactor 调度', '业务处理'],
   },
   {
-    label: 'Project 03',
-    title: '项目名称待填写',
-    caption: '请提供项目难点、关键决策、协作方式和验证结果。',
-    href: '#projects',
-    stack: ['技术栈 A', '技术栈 B', '技术栈 C'],
-    highlights: ['核心能力待填写', '个人职责待填写', '成果数据待填写'],
-    preview: ['问题', '实现', '验证'],
+    slug: 'my-dock',
+    title: 'My Dock',
+    caption: '团队使用的 macOS / iOS 双端效率工具，可在局域网发现 Mac，并通过四位验证码从移动端便捷打开桌面应用。',
+    href: 'https://github.com/PRINCEofAsgd/-My-Dock-',
+    external: true,
+    stack: ['Swift', 'macOS', 'iOS', '局域网发现'],
+    highlights: ['双端协同', '验证码配对', '应用快捷启动'],
+    preview: ['设备发现', '身份配对', '远程启动'],
   },
   {
-    label: 'Project 04',
-    title: '项目名称待填写',
-    caption: '请提供项目目标、主要用户、迭代过程和当前状态。',
-    href: '#projects',
-    stack: ['技术栈 A', '技术栈 B', '技术栈 C'],
-    highlights: ['核心能力待填写', '个人职责待填写', '成果数据待填写'],
-    preview: ['目标', '迭代', '状态'],
+    slug: 'card-game',
+    title: 'Card Game',
+    caption: '基于 Cocos2d-x 3.17 开发的跨平台纸牌游戏，覆盖桌面与移动端构建及核心卡牌交互。',
+    href: 'https://github.com/PRINCEofAsgd/-Card-Game-',
+    external: true,
+    stack: ['C++', 'Cocos2d-x 3.17', '跨平台'],
+    highlights: ['卡牌交互', '游戏状态管理', '多端构建'],
+    preview: ['规则输入', '回合状态', '跨端呈现'],
   },
 ];
 
@@ -68,61 +92,101 @@ const profileRows = [
 
 const internshipCards = [
   {
-    eyebrow: '经历 01',
-    company: '公司或组织名称待填写',
-    period: '起始时间 — 结束时间',
-    title: '职位或角色待填写',
-    text: '请提供这段经历的背景、职责、重点工作和可量化成果。',
-    note: '一句话总结这段经历最能体现的能力。',
-    image: placeholderImage,
+    eyebrow: '实习经历',
+    company: '文安智能',
+    period: '2026.04 — 2026.08',
+    role: 'Go 后端研发',
+    text: '参与分布式 AIoT 设备云管理平台与 2.5D 重建参数服务开发。',
+    focus: '负责服务拆分、设备云端纳管、异步任务链路、数据访问与可观测性建设。',
+    pipeline: ['设备接入', '异步任务', '云端纳管'],
+    deliverables: [
+      {
+        title: '服务架构与设备纳管',
+        code: 'SERVICE',
+        text: '基于 go-zero 拆分 Device、Sync、Task 与 Auth 服务，通过 gRPC、事务和锁机制保障跨服务一致性。',
+      },
+      {
+        title: '异步任务可靠链路',
+        code: 'ASYNC TASK',
+        text: '以 Outbox、Kafka 与 Worker 组织设备注册、状态同步和算法任务，覆盖重试、超时、取消、死信与状态追踪。',
+      },
+      {
+        title: '数据与可观测性',
+        code: 'OBSERVABILITY',
+        text: '完善缓存、SQL 索引与读写链路，并通过 Kubernetes、Prometheus、Loki 和 Grafana 建立故障定位能力。',
+      },
+    ],
+    brandLogo: vionWordmark,
+    brandIcon: vionIcon,
+    copyBrand: true,
+    variant: 'minimax',
   },
   {
-    eyebrow: '经历 02',
-    company: '公司或组织名称待填写',
-    period: '起始时间 — 结束时间',
-    title: '职位或角色待填写',
-    text: '请提供这段经历中你负责的系统、关键问题和交付结果。',
-    focus: '核心职责待填写。',
-    note: '一句话总结这段经历最能体现的能力。',
-    image: placeholderImage,
+    eyebrow: '开源经历',
+    company: '环界云计算',
+    period: '2026.07 — 至今',
+    title: 'Sealos 开源项目 Contributor',
+    text: '参与基于 Kubernetes 的云原生操作系统 Sealos，负责问题发现与复现、bug 定位与修复。',
+    focus: '完善应用删除时的关联资源清理与 Service Bind 新旧模型兼容链路。',
+    pipeline: ['问题复现', '资源清理', '模型兼容'],
+    deliverables: [
+      {
+        title: '问题复现与根因定位',
+        code: 'DIAGNOSIS',
+        text: '在真实环境复现 Network Service 残留与持续计费问题，沿调用链定位子资源引用缺失。',
+      },
+      {
+        title: '资源清理链路',
+        code: 'LIFECYCLE',
+        text: '补全资源引用与清理绑定关系，验证关联网络资源能够随应用生命周期正确回收。',
+      },
+      {
+        title: 'Service Bind 模型兼容',
+        code: 'COMPAT',
+        text: '兼容新旧资源模型下的 Service Bind 关系，持续跟进主线资源模型演进。',
+      },
+    ],
+    brandLogo: sealosLogo,
+    variant: 'sealos',
   },
 ];
 
 const hobbyCards = [
   {
     eyebrow: '爱好 01',
-    title: '兴趣爱好名称待填写',
-    text: '请描述投入时间、代表经历和它对你的影响。',
-    visualTitle: 'HOBBY 01',
-    visualText: '兴趣关键词待填写',
-    note: '一句话补充个人风格。',
+    title: '魔方',
+    text: '专注盲拧项目，四阶盲拧 WCA 全国前 30。',
+    visualTitle: '4×4 BLIND',
+    visualText: 'WCA 全国前 30',
+    note: '持续练习记忆编码、复盘与稳定执行。',
     image: placeholderImage,
   },
   {
     eyebrow: '爱好 02',
-    title: '兴趣爱好名称待填写',
-    text: '请描述投入时间、代表经历和它对你的影响。',
-    visualTitle: 'HOBBY 02',
-    visualText: '兴趣关键词待填写',
-    note: '一句话补充个人风格。',
+    title: '音乐',
+    text: '2024.08—2025.10 从事歌手与主播工作，负责虚拟、音乐、游戏类直播；曾作为月音浪 60w+ 主播，稳定主持 2k—1w+ 同时在线直播间。',
+    visualTitle: 'MUSIC',
+    visualText: '歌手 · 主播 · 直播运营',
+    note: '查看网易云音乐主页',
+    noteHref: 'https://music.163.com/#/artist?id=95001856',
     image: placeholderImage,
   },
   {
     eyebrow: '爱好 03',
-    title: '兴趣爱好名称待填写',
-    text: '请描述投入时间、代表经历和它对你的影响。',
-    visualTitle: 'HOBBY 03',
-    visualText: '兴趣关键词待填写',
-    note: '一句话补充个人风格。',
+    title: '体育',
+    text: '400m 短跑国家二级运动员。',
+    visualTitle: '400M',
+    visualText: '国家二级运动员',
+    note: '保持速度训练、体能与赛场节奏。',
     image: placeholderImage,
   },
   {
     eyebrow: '爱好 04',
-    title: '兴趣爱好名称待填写',
-    text: '请描述投入时间、代表经历和它对你的影响。',
-    visualTitle: 'HOBBY 04',
-    visualText: '兴趣关键词待填写',
-    note: '一句话补充个人风格。',
+    title: '游戏',
+    text: '王者荣耀国 50 打野，Minecraft 小型生存服服主。',
+    visualTitle: 'GAME',
+    visualText: '竞技 · 生存服运营',
+    note: '兼顾竞技决策、团队协作与社区维护。',
     image: placeholderImage,
   },
 ];
@@ -158,19 +222,32 @@ const socials = [
     external: true,
     orbit: { angle: 248, track: 'inner', duration: '18s', direction: 'normal', size: '54px', mobileSize: '40px' },
   },
+  {
+    name: '网易云音乐',
+    href: 'https://music.163.com/#/artist?id=95001856',
+    Icon: SiNeteasecloudmusic,
+    tone: 'netease',
+    external: true,
+    orbit: { angle: 196, track: 'outer', duration: '48s', direction: 'reverse', size: '58px', mobileSize: '42px' },
+  },
 ];
 
 const resumeAnchors = [
   { label: '信息', href: '#info' },
-  { label: '实习', href: '#internship' },
-  { label: '项目', href: '#projects' },
+  { label: '工作经历', href: '#internship' },
+  { label: '项目经历', href: '#projects' },
   { label: '爱好', href: '#hobbies' },
   { label: '社媒', href: '#socials' },
 ];
 
 const entryAssetUrls = Array.from(new Set([
   avatarImage,
+  screenBackgroundImage,
+  vionIcon,
+  vionWordmark,
+  sealosLogo,
   ...mockMemberIcons.map((icon) => icon.src),
+  ...techStackIcons.map((icon) => icon.src),
   `${homepageBase}/images/fora-hero-far.png`,
   `${homepageBase}/images/fora-hero-mid.png`,
   `${homepageBase}/images/fora-hero-foreground.png`,
@@ -178,7 +255,7 @@ const entryAssetUrls = Array.from(new Set([
 
 const deferredAssetUrls = Array.from(new Set([
   placeholderImage,
-  ...internshipCards.flatMap((card) => [card.image, card.brandLogo].filter(Boolean)),
+  ...internshipCards.flatMap((card) => [card.brandLogo, card.brandIcon].filter(Boolean)),
   ...hobbyCards.map((card) => card.image),
 ]));
 
@@ -794,7 +871,7 @@ function MockColorField() {
 function ResumeMockup({ compact = false }) {
   return (
     <div className={`product-mockup ${compact ? 'compact' : ''}`}>
-      <MockColorField />
+      <img className="mock-screen-background" src={screenBackgroundImage} alt="阳光窗边的咖啡与抹茶蛋糕" />
       <aside className="mock-sidebar">
         <div className="mock-pill" />
         <div className="mock-search" />
@@ -837,6 +914,26 @@ function ResumeMockup({ compact = false }) {
           </small>
         </div>
       </section>
+      <ul className="mock-tech-stack" aria-label="技术栈">
+        {techStackIcons.map((icon) => (
+          <li
+            className="mock-tech-logo"
+            key={icon.name}
+            style={{
+              '--logo-x': `${icon.x}%`,
+              '--logo-y': `${icon.y}%`,
+              '--logo-size': `${icon.size}px`,
+              '--logo-mobile-size': `${Math.round(icon.size * 0.7)}px`,
+              '--logo-tilt': `${icon.tilt}deg`,
+              '--logo-duration': `${icon.duration}s`,
+              '--logo-delay': `${icon.delay}s`,
+            }}
+            title={icon.name}
+          >
+            <img src={icon.src} alt={icon.name} />
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -943,8 +1040,8 @@ function About() {
 function Projects() {
   const [activeIndex, setActiveIndex] = useState(0);
   const active = useMemo(() => projects[activeIndex], [activeIndex]);
-  const activeTabId = `project-tab-${active.label}`;
-  const activePanelId = `project-panel-${active.label}`;
+  const activeTabId = `project-tab-${active.slug}`;
+  const activePanelId = `project-panel-${active.slug}`;
   // selectProject 循环选择项目，允许首尾连续切换。
   const selectProject = (index) => setActiveIndex((index + projects.length) % projects.length);
   // handleProjectKeyDown 支持左右方向键切换项目标签。
@@ -965,32 +1062,29 @@ function Projects() {
       <div className="section-inner">
         <div className="split-heading">
           <div>
-            <span className="pill muted">项目</span>
-            <h2>
-              用代表项目说明能力。
-              <em> 让职责与结果清晰可查。</em>
-            </h2>
+            <span className="pill muted">项目经历</span>
+            <h2>{'我的项目 < - > 也是我的小心愿'}</h2>
           </div>
           <p>
-            这里预留四个代表项目，请优先选择能体现不同能力、职责和结果的案例。
+            四个项目分别覆盖高性能网络、Web 服务、Apple 双端协同与跨平台游戏开发。
           </p>
         </div>
 
         <div className="feature-tabs" role="tablist" aria-label="项目分类">
           {projects.map((project, index) => (
             <button
-              aria-controls={`project-panel-${project.label}`}
+              aria-controls={`project-panel-${project.slug}`}
               aria-selected={index === activeIndex}
               className={index === activeIndex ? 'active' : ''}
-              id={`project-tab-${project.label}`}
-              key={project.label}
+              id={`project-tab-${project.slug}`}
+              key={project.slug}
               onClick={() => selectProject(index)}
               onKeyDown={(event) => handleProjectKeyDown(event, index)}
               role="tab"
               tabIndex={index === activeIndex ? 0 : -1}
               type="button"
             >
-              {project.label}
+              {project.title}
             </button>
           ))}
         </div>
@@ -999,12 +1093,12 @@ function Projects() {
           aria-labelledby={activeTabId}
           className="feature-stage"
           id={activePanelId}
-          key={active.label}
+          key={active.slug}
           role="tabpanel"
         >
           <div className="feature-app">
             <aside>
-              <span className="feature-kicker">{active.label}</span>
+              <span className="feature-kicker">{active.title}</span>
               <h3>{active.title}</h3>
               <p>{active.caption}</p>
               <div className="feature-stack" aria-label={`${active.title} 技术栈`}>
@@ -1012,12 +1106,18 @@ function Projects() {
                   <span key={item}>{item}</span>
                 ))}
               </div>
-              <a href={active.href}>查看项目</a>
+              <a
+                href={active.href}
+                rel={active.external ? 'noreferrer' : undefined}
+                target={active.external ? '_blank' : undefined}
+              >
+                查看项目
+              </a>
             </aside>
             <main>
               <div className="feature-preview">
                 <div className="feature-preview-head">
-                  <span>{active.label}</span>
+                  <span>{active.title}</span>
                   <em>{active.stack[0]}</em>
                 </div>
                 <div className="feature-preview-flow" aria-label={`${active.title} 项目链路`}>
@@ -1065,6 +1165,98 @@ function Projects() {
   );
 }
 
+// VionInternshipVisual 复用原作者的控制台结构，在右栏展示完整实习职责。
+function VionInternshipVisual({ card }) {
+  return (
+    <div className="get-visual minimax-visual">
+      <div className="visual-toolbar">
+        <span />
+        <span />
+        <span />
+        <span className="visual-tag">Go 后端</span>
+      </div>
+      <div className="minimax-console vion-console">
+        <div className="minimax-console-head vion-console-head">
+          <span>AIOT CLOUD / GO BACKEND</span>
+          <i><b />INTERNSHIP</i>
+        </div>
+
+        <div className="minimax-flow vion-flow" aria-label="文安智能实习工作链路">
+          {card.pipeline.map((item, index) => (
+            <React.Fragment key={item}>
+              <span>
+                <small>0{index + 1}</small>
+                {item}
+              </span>
+              {index < card.pipeline.length - 1 && <i aria-hidden="true">→</i>}
+            </React.Fragment>
+          ))}
+        </div>
+
+        <div className="minimax-milestones vion-capabilities" aria-label="文安智能实习职责">
+          {card.deliverables.map((item, index) => (
+            <article key={item.title}>
+              <header>
+                <span><small>0{index + 1}</small>{item.title}</span>
+                <time>{item.code}</time>
+              </header>
+              <p>{item.text}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// SealosOpenSourceVisual 复用原作者第二段经历的流程和职责控制台结构。
+function SealosOpenSourceVisual({ card }) {
+  return (
+    <div className="get-visual sealos-visual">
+      <div className="visual-toolbar">
+        <span />
+        <span />
+        <span />
+        <span className="visual-tag">开源协作</span>
+      </div>
+      <div className="minimax-console sealos-console">
+        <div className="minimax-console-head sealos-console-head">
+          <span className="sealos-console-logo">
+            <img src={card.brandLogo} alt="Sealos Logo" />
+            <b>Sealos</b>
+          </span>
+          <span>ISSUE DETECTION / BUG FIX</span>
+          <i><b />OPEN SOURCE</i>
+        </div>
+
+        <div className="minimax-flow sealos-flow" aria-label="Sealos 资源生命周期链路">
+          {card.pipeline.map((item, index) => (
+            <React.Fragment key={item}>
+              <span>
+                <small>0{index + 1}</small>
+                {item}
+              </span>
+              {index < card.pipeline.length - 1 && <i aria-hidden="true">→</i>}
+            </React.Fragment>
+          ))}
+        </div>
+
+        <div className="minimax-milestones sealos-capabilities" aria-label="Sealos 开源职责">
+          {card.deliverables.map((item, index) => (
+            <article key={item.title}>
+              <header>
+                <span><small>0{index + 1}</small>{item.title}</span>
+                <time>{item.code}</time>
+              </header>
+              <p>{item.text}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // StorySection 复用同一叙事卡片结构展示经历与兴趣。
 function StorySection({ id, eyebrow, title, mutedTitle, text, cards, stacked = true }) {
   return (
@@ -1099,6 +1291,15 @@ function StorySection({ id, eyebrow, title, mutedTitle, text, cards, stacked = t
                     <time>{card.period}</time>
                   </div>
                 )}
+                {card.copyBrand && (
+                  <div className="experience-copy-brand">
+                    <span className="minimax-logo vion-logo">
+                      <img className="vion-logo-icon" src={card.brandIcon} alt="Vion Tech Icon" />
+                      <img className="vion-logo-wordmark" src={card.brandLogo} alt="VionVision" />
+                    </span>
+                    <strong>{card.role}</strong>
+                  </div>
+                )}
                 {card.title && <h3>{card.title}</h3>}
                 {card.text && <p>{card.text}</p>}
                 {card.focus && (
@@ -1107,28 +1308,40 @@ function StorySection({ id, eyebrow, title, mutedTitle, text, cards, stacked = t
                     <span>{card.focus}</span>
                   </div>
                 )}
-                {card.note && <strong>{card.note}</strong>}
+                {card.note && (card.noteHref ? (
+                  <a className="story-note-link" href={card.noteHref} rel="noreferrer" target="_blank">
+                    {card.note}
+                  </a>
+                ) : (
+                  <strong>{card.note}</strong>
+                ))}
               </div>
-              <div
-                className="get-visual"
-                style={{
-                  '--visual-image': `url(${card.image})`,
-                  '--visual-position': card.imagePosition ?? 'center',
-                }}
-              >
-                <div className="visual-toolbar">
-                  <span />
-                  <span />
-                  <span />
-                  <span className="visual-tag">记录</span>
+              {card.variant === 'minimax' ? (
+                <VionInternshipVisual card={card} />
+              ) : card.variant === 'sealos' ? (
+                <SealosOpenSourceVisual card={card} />
+              ) : (
+                <div
+                  className="get-visual"
+                  style={{
+                    '--visual-image': `url(${card.image})`,
+                    '--visual-position': card.imagePosition ?? 'center',
+                  }}
+                >
+                  <div className="visual-toolbar">
+                    <span />
+                    <span />
+                    <span />
+                    <span className="visual-tag">记录</span>
+                  </div>
+                  <div className="visual-card">
+                    <div />
+                    <h4>{card.visualTitle ?? 'EXPERIENCE'}</h4>
+                    <p>{card.visualText ?? '内容待填写'}</p>
+                    <span className="visual-note">重点记录</span>
+                  </div>
                 </div>
-                <div className="visual-card">
-                  <div />
-                  <h4>{card.visualTitle ?? 'EXPERIENCE'}</h4>
-                  <p>{card.visualText ?? '内容待填写'}</p>
-                  <span className="visual-note">重点记录</span>
-                </div>
-              </div>
+              )}
             </article>
           ))}
         </div>
@@ -1137,22 +1350,22 @@ function StorySection({ id, eyebrow, title, mutedTitle, text, cards, stacked = t
   );
 }
 
-// Internship 组装个人经历区块的占位内容。
+// Internship 组装工作与开源贡献经历区块。
 function Internship() {
   return (
     <StorySection
       id="internship"
-      eyebrow="个人经历"
-      title="经历需要落在真实工作里。"
-      mutedTitle=" 用职责和结果证明能力。"
-      text="这里预留两段代表经历，可以填写实习、工作、教育或重要协作经历。"
+      eyebrow="工作经历"
+      title="用真实工程经历，铺叙出成长道路。"
+      mutedTitle=""
+      text="从企业后端研发到云原生开源协作"
       cards={internshipCards}
       stacked={false}
     />
   );
 }
 
-// Hobbies 组装兴趣爱好区块的占位内容。
+// Hobbies 组装四项兴趣爱好与公开音乐主页入口。
 function Hobbies() {
   return (
     <StorySection
@@ -1160,7 +1373,7 @@ function Hobbies() {
       eyebrow="爱好"
       title="兴趣爱好构成生活纹理。"
       mutedTitle=" 让个人页不止是一份简历。"
-      text="这里预留四项长期兴趣，请提供代表经历、投入程度和适合展示的图片。"
+      text="先记录四项长期兴趣与代表经历，配图和更完整的故事将在后续补充。"
       cards={hobbyCards}
     />
   );
@@ -1175,7 +1388,7 @@ function Socials() {
 
         <div className="social-section-heading">
           <span className="social-section-label pill muted">社媒</span>
-          <span className="social-hint">GitHub、邮箱、微信与抖音</span>
+          <span className="social-hint">GitHub、邮箱、微信、抖音与网易云音乐</span>
         </div>
 
         <div id="contact-details" className="final-copy">

@@ -11,7 +11,7 @@ import (
 	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/config"
 )
 
-// TestHomepage 验证根路径返回 Loki Yin Homepage，并保留资料占位、资源加载门、来源说明和独立安全策略。
+// TestHomepage 验证根路径返回 Loki Yin Homepage，并保留完整资料、资源加载门、来源说明和独立安全策略。
 func TestHomepage(t *testing.T) {
 	router := NewRouter(config.Config{Mode: "test"}, nil)
 	response := httptest.NewRecorder()
@@ -28,7 +28,7 @@ func TestHomepage(t *testing.T) {
 	body := response.Body.String()
 	for _, expected := range []string{
 		"<title>Loki Yin's Homepage</title>",
-		`href="/favicon.png?v=V1.0.7_20260830"`,
+		`href="/favicon.png?v=V1.1.0_20260901"`,
 		"页面参考 github.com/LeoninCS/Homepage 设计。",
 		"/homepage/images/fora-hero-foreground.png",
 	} {
@@ -74,15 +74,55 @@ func TestHomepage(t *testing.T) {
 		"lokiyin4819@foxmail.com",
 		"Yyg1061",
 		"douyin.com/user/MS4wLjABAAAAqMBHTKsqMfKY5EldZgzCmvx6l3x-4sawM42QNPFn03LAB2oveG0wDDgPJNnDZNTa",
+		"文安智能",
+		"环界云计算",
+		"实习经历",
+		"开源经历",
+		"Go 后端研发",
+		"AIOT CLOUD / GO BACKEND",
+		"ISSUE DETECTION / BUG FIX",
+		"Sealos 开源项目 Contributor",
+		"负责问题发现与复现、bug 定位与修复。",
+		"完善应用删除时的关联资源清理与 Service Bind 新旧模型兼容链路。",
+		"Service Bind 模型兼容",
+		"用真实工程经历，铺叙出成长道路。",
+		"从企业后端研发到云原生开源协作",
+		"我的项目 < - > 也是我的小心愿",
+		"Reactor Web",
+		"Fluffy Cupcake",
+		"My Dock",
+		"Card Game",
+		"https://music.163.com/#/artist?id=95001856",
+		"matcha-cake-screen-wide.jpg",
+		"tech-stack",
+		"go.svg",
+		"docker.svg",
+		"kubernetes.svg",
+		"experience/vion-tech.svg",
+		"experience/vionvision-wordmark.svg",
 	} {
 		if !strings.Contains(assetBody, expected) {
 			t.Fatalf("Homepage JavaScript 产物缺少公开资料 %q", expected)
 		}
 	}
-	for _, removed := range []string{"奖项成果", "#competition"} {
+	for _, removed := range []string{
+		"奖项成果",
+		"#competition",
+		"Project 01",
+	} {
 		if strings.Contains(assetBody, removed) {
-			t.Fatalf("Homepage JavaScript 产物仍包含已删除的奖项入口或区块 %q", removed)
+			t.Fatalf("Homepage JavaScript 产物仍包含已删除内容 %q", removed)
 		}
+	}
+	// 项目标签需直接使用项目名，并按用户指定的 2、1、3、4 顺序呈现。
+	projectOrder := []string{"Fluffy Cupcake", "Reactor Web", "My Dock", "Card Game"}
+	previousIndex := -1
+	for _, projectName := range projectOrder {
+		projectIndex := strings.Index(assetBody, projectName)
+		if projectIndex <= previousIndex {
+			t.Fatalf("Homepage 项目顺序不正确，%q 的位置 = %d，前一项目位置 = %d", projectName, projectIndex, previousIndex)
+		}
+		previousIndex = projectIndex
 	}
 	homepagePathResponse := httptest.NewRecorder()
 	router.ServeHTTP(homepagePathResponse, httptest.NewRequest(http.MethodGet, "/homepage/", nil))
@@ -108,7 +148,7 @@ func TestYanliliPage(t *testing.T) {
 	if strings.Contains(response.Body.String(), "/assets/miss-pop.mp3") {
 		t.Fatal("页面不应再加载 MP3，点击音效应由 Web Audio 合成")
 	}
-	if !strings.Contains(response.Body.String(), `href="/favicon.png?v=V1.0.7_20260830"`) {
+	if !strings.Contains(response.Body.String(), `href="/favicon.png?v=V1.1.0_20260901"`) {
 		t.Fatal("想念页面缺少全站统一 PNG 标签图标")
 	}
 	if strings.Contains(response.Body.String(), "/assets/miss-button.png") || strings.Contains(response.Body.String(), "loki-yin-avatar.png") {
@@ -160,6 +200,19 @@ func TestHealthAndAsset(t *testing.T) {
 		{path: "/homepage/images/github-mark.svg", contentType: "image/svg+xml"},
 		{path: "/homepage/images/sealos.svg", contentType: "image/svg+xml"},
 		{path: "/homepage/images/vion-tech.png", contentType: "image/png"},
+		{path: "/homepage/images/matcha-cake-screen-wide.jpg", contentType: "image/jpeg"},
+		{path: "/homepage/images/tech-stack/go.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/tech-stack/cpp.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/tech-stack/kafka.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/tech-stack/nginx.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/tech-stack/mysql.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/tech-stack/redis.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/tech-stack/prometheus.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/tech-stack/loki.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/tech-stack/kubernetes.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/tech-stack/docker.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/experience/vion-tech.svg", contentType: "image/svg+xml"},
+		{path: "/homepage/images/experience/vionvision-wordmark.svg", contentType: "image/svg+xml"},
 	} {
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
