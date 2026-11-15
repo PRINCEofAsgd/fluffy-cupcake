@@ -1,7 +1,9 @@
 .git
 .gitignore
 .env
+.env.prod
 db-migration-dumps
+db-migration-report
 fluffy_cupcake_backup*.sql
 *.sql.gz
 *.dump

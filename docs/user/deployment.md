@@ -25,15 +25,11 @@ Production: Singapore Sealos App → Guangzhou Sealos Managed MySQL
 make build
 ```
 
-默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.1.0_20260901`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像先以 Node 22 构建 Homepage，再进行 Go 多阶段交叉编译；无基础系统的 `scratch` 运行阶段最终仍仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
+默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.1.0_20261115`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像先以 Node 22 构建 Homepage，再进行 Go 多阶段交叉编译；无基础系统的 `scratch` 运行阶段最终仍仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
 
-### V1.1.0 纯应用更新
+## 已有环境更新
 
-本版本细化 Homepage 的彩色章节标题、文安智能实习与 Sealos 开源经历文案，并优化主机辅助取景、圆角裁切和 10 枚技术栈 Logo 的统一尺寸与分布；没有数据库结构、Migration、环境变量、Secret、端口、健康检查或持久化数据变化。生产数据库保持当前 `schema_migrations.version=6`、`dirty=0`，不需要执行 `migrate up`。
-
-部署时构建并推送新的不可变镜像标签，再把 Sealos Application 的镜像地址更新为该标签即可。保留现有 `DATABASE_DSN`、`JWT_SECRET`、`JWT_EXPIRE`、端口 `4819` 和健康检查配置；不需要额外部署资源或平台规则。
-
-更新完成后至少检查 `/healthz` 返回 200、`/` 展示 Homepage、`/yanlili` 可访问，并完成一次登录或 `/api/auth/me` 冒烟。建议使用新标签触发滚动发布；不要复用旧标签依赖平台强制拉取。
+局部更新部署手册按上一次已部署的版本维护。本次会话更新要求先迁移 MySQL，再一次性切换应用并更新环境变量，已有用户需重新登录。见 [从 V1.1.0_20260901 更新到 V1.1.0_20261115](incremental-deployments/from-V1.1.0_20260901.md)。
 
 ## 本地/独立单机 Compose
 
@@ -56,6 +52,8 @@ Singapore Application 只部署应用镜像并从 Secret 注入配置，不在�
 ```text
 fluffy_cupcake_app:URL_ENCODED_PASSWORD@tcp(GUANGZHOU_PUBLIC_ENDPOINT:3306)/fluffy_cupcake?timeout=5s&readTimeout=5s&writeTimeout=5s
 ```
+
+在 Singapore Application 设置 `ACCESS_TOKEN_TTL=15m` 和 `SESSION_TTL=360h`。从旧版升级时移除 `JWT_EXPIRE`，保留独立的 `JWT_SECRET`。认证 Cookie 沿用 release 模式的 `Secure` 和 `SameSite=Lax`。
 
 连接层仍强制 `parseTime=true`、`loc=UTC` 和 `time_zone='+00:00'`。若 DSN 未显式设置三项网络超时，应用会分别补 5 秒；显式值不会被覆盖。公共可信证书或已注册自定义 CA 时使用 `tls=true`。平台只能提供无法验证的证书且已明确接受风险时可使用 `tls=skip-verify`：传输被加密，但不能验证服务器身份，仍存在主动中间人风险；取得官方 CA 后应升级为严格验证。禁止使用可能回退为明文的 `tls=preferred`。
 
@@ -81,20 +79,16 @@ WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME IN (
     'schema_migrations', 'users', 'button_click_minutes',
     'companion_bindings', 'companion_active_memberships',
-    'qr_login_mappings'
+    'qr_login_mappings', 'auth_sessions', 'auth_refresh_tokens'
   )
 ORDER BY TABLE_NAME;
 ```
 
 必须根据检查结果继续，不能在未知状态下重复执行建表 SQL：
 
-- 全部业务表均不存在：先建立空的 `schema_migrations`；依次执行 `000001` 至 `000006` 的 Up SQL，每一步明确成功后再登记对应版本，最终为 `version=6, dirty=0`。
-- 已有 `users`、`button_click_minutes` 且 `version=2, dirty=0`：暂停应用写入，依次执行 `000003` 至 `000006`；`000003` 原地升级点击表，不删除旧点击。若已明确旧记录对象，应先创建该用户，再只补旧行的 `target_user_id` 并保持 `companion_binding_id = NULL`；不要为了迁移伪造绑定信件。
-- 五张业务表完整且 `version=3, dirty=0`：依次执行 `000004`、`000005` 和 `000006`，最终登记为 `version=6, dirty=0`。
-- 五张业务表完整且 `version=4, dirty=0`：依次执行 `000005` 和 `000006`，成功后登记为 `version=6, dirty=0`。
-- 五张业务表完整且 `version=5, dirty=0`：只执行 `migrations/000006_create_qr_login_mappings.up.sql`，成功后登记为 `version=6, dirty=0`。该步骤只新建二维码映射表，不修改用户、绑定或想念记录。
-- 只存在其中部分表，或 `schema_migrations` 的 `dirty` 为 `1`：先核对现有表结构，再补齐缺失部分；不要先修改版本号。
-- 上述六张表均存在：核对 `SELECT version, dirty FROM schema_migrations;`；当前期望仅一行 `version=6`、`dirty=0`。
+- 空库从 `000001` 顺序执行至 `000007`，已部署库从当前干净版本的下一条 Up 开始。当前预期为 `version=7, dirty=0`；`version=6, dirty=0` 的已有库只需做 `000007`，见当前增量手册。
+- 从 2 或更早版本跨过 `000003` 时，暂停应用写入。明确了旧点击的记录对象后，可创建真实用户并补旧行的 `target_user_id`，保留 `companion_binding_id = NULL`。
+- 遇到部分建表或 dirty 状态时，先核对实际表结构及迁移记录。每步执行成功后再登记对应版本。
 
 Database Studio 操作不需要公开 MySQL 地址，也不需要把 DSN 或密码粘贴到 SQL、YAML、命令历史和聊天记录。建表和迁移版本登记完成后，生产镜像因采用 `scratch` 且只包含服务端二进制，不能在容器内运行本地 `create-user` CLI。可在 macOS Terminal 使用系统自带的 `htpasswd` 隐藏读取登录密码并生成与服务端兼容的 bcrypt cost 10 哈希：
 

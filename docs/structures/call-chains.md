@@ -16,9 +16,9 @@
 2. `AuthHandler.Login` 只解析 JSON，不记录密码，调用 `AuthService.Login`。
 3. `AuthService` 调用 `UserRepository.GetByUsername`，Repository 以参数化 SQL 查询 `users`。
 4. Service 用 `bcrypt.CompareHashAndPassword` 比较密码；用户不存在和密码错误统一返回 401。
-5. 成功后 Service 签发含 `user_id`、`username`、`iat`、`exp` 的 HS256 JWT。
-6. `UserRepository.UpdateLastLogin` 记录服务端 UTC 登录时间，作为 30 天未登录直接解绑的可信依据。
-7. Handler 把 JWT 写入 `HttpOnly`、`SameSite=Lax`、`Path=/` Cookie；release 模式同时设置 `Secure`。
+5. `AuthService.startSession` 生成随机会话 ID 和刷新凭证，签发包含 `sid`、身份、`iat`、`exp` 的 HS256 访问 JWT。首次签发确定会话截止（默认 15 天），访问 JWT 默认 15 分钟且受会话截止限制。
+6. `AuthSessionRepository.Create` 在一个事务内更新 `users.last_login_at`、创建会话并写入首枚刷新凭证的 SHA-256 哈希。
+7. `AuthHandler` 下发两个 `HttpOnly`、`SameSite=Lax` Cookie。访问 Cookie 的路径为 `/`，刷新 Cookie 的路径为 `/api/auth`，release 模式两者均为 `Secure`。
 
 ## 二维码扫码登录链路
 
@@ -26,9 +26,8 @@
 2. 每次识别先处理中心取景区域，再处理受控尺寸的完整画面，并同时尝试普通/反色二维码；相册文件优先由 `createImageBitmap` 读取并应用照片方向，旧浏览器回退到可释放的 `blob:` 图片。
 3. 识别成功后浏览器 `POST /api/auth/qr-login` 提交文本；`AuthHandler.QrLogin` 只解析 JSON，不记录文本，调用 `AuthService.LoginByQrText`。
 4. Service 先 `TrimSpace`，再调用 `QrLoginRepository.GetUserByQrText` 以参数化 SQL 联查 `qr_login_mappings` 与 `users`；未映射文本统一返回 401。
-5. 成功后 Service 与密码登录一致地调用 `UpdateLastLogin` 更新 `last_login_at`，再复用同一 `issueToken` 签发 JWT。
-6. Handler 写入与密码登录完全相同的 HttpOnly Cookie；后续请求与普通登录会话无任何区别。
-7. 前端随后请求 `/api/auth/me` 完成 `setAuthenticated`，并复用 `loadCompanionState`/`loadPartners` 初始化页面。
+5. Service 复用密码登录的 `startSession` 和事务，Handler 下发相同的两个 Cookie。
+6. 浏览器请求 `/api/auth/me` 初始化登录状态，再加载绑定与统计。同一流程也用于页面启动时恢复已有登录。
 
 ## 陪伴绑定与解绑链路
 
@@ -41,19 +40,22 @@
 7. 对方 30 天内登录过时，同一事务写入申请字段并把 `unbind_status` 设为 `pending`；发起方可调用 `unbind-cancel`，另一方可调用 `unbind-reject` 或 `unbind-accept`。取消/拒绝只原子结束本次申请，关系保持 `active`，双方收件箱显示同一处理结果，并可之后在原信件重新申请。
 8. 对方已连续 30 天未登录时先返回 `inactive_confirmation_required`，页面第四次确认后重发同一接口，服务端重新判定并结束为 `ended/inactive`；此时子状态为 `direct`。接受普通申请结束为 `ended/mutual` 和 `accepted`。信件和点击历史始终保留。
 
-## JWT 鉴权链路
+## 访问鉴权、续期与退出
 
-1. 浏览器后续同源请求自动携带 Cookie，JavaScript 无需也不能读取 HttpOnly Token。
-2. `middleware.RequireAuth` 校验 HS256 签名、issuer、exp 和必要身份声明。
-3. Middleware 将可信 `user_id/username` 写入 Gin Context；缺失、非法或过期 Token 统一返回 401。
-4. `AuthHandler.Me` 和按钮 Handler 只从 Context 取 `user_id`，不接受客户端伪造的用户 ID。
+1. `middleware.RequireAuth` 读取访问 Cookie，`AuthService.Authenticate` 校验签名、签发者、有效期及 `sid`，再按主键检查 MySQL 会话的用户、截止及撤销状态。旧版 JWT 缺少 `sid`，会在签发格式检查时被拒绝。
+2. 鉴权成功后中间件写入可信 `user_id/username` 并放行业务 Handler；认证拒绝返回 `401 AUTH_REQUIRED`，查询故障返回 `503 AUTH_UNAVAILABLE`。两个响应均在业务 Handler 执行前产生。
+3. `app.js:requestJSON` 仅对 `401 AUTH_REQUIRED` 发起恢复。页面内合并并发请求，跨标签页优先用 Web Locks 串行化，并在锁内请求 `/api/auth/me` 确认是否已有新访问 Cookie，仍需续期时调用 `POST /api/auth/refresh`。
+4. 刷新接口凭刷新 Cookie 找会话。`AuthSessionRepository.Rotate` 用会话行锁串行化刷新，原子标记旧哈希并写入新哈希。会话及刷新 Cookie 保留首次签发时的截止时间，访问 JWT 的 `exp` 也被限制在这个截止时间内；刷新不修改 `last_login_at`。
+5. 旧凭证在轮换后 10 秒内重复出现返回 `409 REFRESH_CONFLICT`，响应该请求时不写 Cookie。此时浏览器短暂通过只读 `/api/auth/me` 等待其他标签页的新 Cookie。超过窗口再次使用旧凭证会撤销会话。刷新成功后，浏览器对最初被拦截的请求重放一次。普通业务错误及写入响应丢失不触发认证重放。
+6. 刷新接口以 `401 SESSION_ENDED` 或 `401 NO_SESSION` 表示会话失效或缺少刷新 Cookie；页面提示需要登录。网络、数据库和短暂并发故障提供重试提示，保留当前界面登录状态。刷新只按请求触发。
+7. `POST /api/auth/logout` 可使用当前或历史刷新凭证定位并撤销当前会话。刷新凭证缺失或无法匹配时，使用仍有效的访问 JWT 定位。服务端成功撤销后清除两个 Cookie。撤销提交后的新鉴权会拒绝该会话已签发的全部访问 JWT；已通过鉴权的在途业务请求可以完成。
 
 ## 按钮点击写入链路
 
 1. `app.js:createFloatingMessage` 始终先创建文字动画；音频随后异步启动，新点击会中断旧音轨。
 2. 未登录或未绑定时链路到此结束，反馈固定为“按按钮，想你+1”，不增加 `pendingClicks`。
 3. 双向绑定后反馈宾语为绑定对象用户名或当前用户自己的备注，并增加 `pendingClicks`；750ms 后 `flushClicks` 把最多 100 次合并为一次 `POST /api/yanlili/clicks`。
-4. Auth Middleware 校验 Cookie，`ButtonClickHandler` 校验 `count` 范围。
+4. 鉴权中间件校验访问 JWT 和会话；到期时先拒绝写入，浏览器恢复会话后可重试一次。`ButtonClickHandler` 放行后校验 `count` 范围。
 5. `ButtonClickService` 读取当前绑定 ID 和对象 ID，用服务端 `time.Now().UTC().Truncate(time.Minute)` 生成分钟桶。
 6. `ButtonClickRepository.AddClicks` 通过 `INSERT ... SELECT` 再次核对当前绑定占位并执行原子 Upsert，避免解绑竞态把点击写进已结束关系。
 

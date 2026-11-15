@@ -50,7 +50,8 @@ MYSQL_ROOT_PASSWORD=<ROOT_DB_PASSWORD>
 MYSQL_PORT=3306
 DATABASE_DSN='fluffy_cupcake:<APP_DB_PASSWORD>@tcp(127.0.0.1:3306)/fluffy_cupcake?timeout=5s&readTimeout=5s&writeTimeout=5s'
 JWT_SECRET=<JWT_RANDOM_SECRET>
-JWT_EXPIRE=24h
+ACCESS_TOKEN_TTL=15m
+SESSION_TTL=360h
 ```
 
 尖括号表示占位说明，实际填写时不要保留。DSN 外层单引号必须保留，否则本地脚本读取 `tcp(...)` 时会触发 shell 语法错误。若 MySQL 数据卷已经初始化，事后只修改 `.env` 不会自动修改库内旧密码；应继续使用初始化时的值，或先在 MySQL 内主动改密。
@@ -63,13 +64,13 @@ make db-up
 docker compose ps mysql
 ```
 
-执行 Migration（当前应到版本 6）：
+执行 Migration（当前应到版本 7）：
 
 ```bash
 make migrate-up
 ```
 
-该命令使用官方 `migrate/migrate:v4.19.1` 工具容器依次执行 `migrations/*.up.sql`。回滚最近一版可运行 `make migrate-down`；完整回滚必须按 `000006` 到 `000001` 的逆序执行。
+该命令使用官方 `migrate/migrate:v4.19.1` 工具容器依次执行 `migrations/*.up.sql`。回滚最近一版可运行 `make migrate-down`；完整回滚必须按 `000007` 到 `000001` 的逆序执行。
 
 查看实际结构：
 
@@ -87,11 +88,15 @@ DESCRIBE button_click_minutes\G
 DESCRIBE companion_bindings\G
 DESCRIBE companion_active_memberships\G
 DESCRIBE qr_login_mappings\G
+DESCRIBE auth_sessions\G
+DESCRIBE auth_refresh_tokens\G
 SHOW INDEX FROM users\G
 SHOW INDEX FROM button_click_minutes\G
 SHOW INDEX FROM companion_bindings\G
 SHOW INDEX FROM companion_active_memberships\G
 SHOW INDEX FROM qr_login_mappings\G
+SHOW INDEX FROM auth_sessions\G
+SHOW INDEX FROM auth_refresh_tokens\G
 ```
 
 ## 创建固定用户
@@ -164,6 +169,9 @@ curl -i -c /tmp/fluffy-cookie.txt \
   -d '{"username":"yanlili","password":"你的密码"}' \
   http://localhost:4819/api/auth/login
 curl -i -b /tmp/fluffy-cookie.txt http://localhost:4819/api/auth/me
+# 续期时同时读写 Cookie jar，保留轮换后的刷新凭证。
+curl -i -b /tmp/fluffy-cookie.txt -c /tmp/fluffy-cookie.txt \
+  -X POST http://localhost:4819/api/auth/refresh
 curl -i -b /tmp/fluffy-cookie.txt \
   -H 'Content-Type: application/json' \
   -d '{"count":6}' \
@@ -186,7 +194,9 @@ curl -s -b /tmp/fluffy-cookie.txt 'http://localhost:4819/api/yanlili/clicks/deta
 
 接受绑定、修改备注、统一解绑判定、接受解绑、取消申请和拒绝申请分别使用 `/api/companion/bindings/:id/accept`、`:id/note`、`:id/unbind-request`、`:id/unbind-accept`、`:id/unbind-cancel`、`:id/unbind-reject`。除备注使用 `PATCH` 外均为 `POST`；项目没有独立的直接解绑或删除信件接口。统一解绑请求体为 `{"confirm_inactive":false}`：对方近期登录时写入 `pending` 申请；超过 30 天未登录时返回 `inactive_confirmation_required`，前端额外确认后以 `{"confirm_inactive":true}` 重发，服务端重新判定并决定直接解绑或改发普通申请。只有发起方可取消、只有接收方可拒绝或接受；取消和拒绝保留反馈字段但不结束活跃关系。
 
-不带 `-b` 请求受保护接口应返回 401。登录响应的 JWT 由 header（算法/类型）、payload（签名保护的身份和时间声明）、signature（防篡改）构成；payload 不是加密内容，所以仍必须用 HTTPS 防止 Token 在传输中被窃取。JWT 放 HttpOnly Cookie 而非 localStorage，可降低普通页面脚本读取 Token 的风险；`Secure` 限制 HTTPS 传输，`SameSite=Lax` 降低跨站请求携带 Cookie 的机会。
+不带 Cookie 请求受保护接口会在 Handler 执行前收到 `401 AUTH_REQUIRED`。密码和扫码登录下发访问与刷新 Cookie，默认有效期分别是 15 分钟和 15 天。访问 JWT 绑定 MySQL 会话，浏览器无法通过 JavaScript 读取任一凭证。服务端撤销会话后，新到达的请求立即鉴权失败，已通过鉴权的在途请求可完成。
+
+本地观察续期可临时设置 `ACCESS_TOKEN_TTL=5s`，登录后等访问 Cookie 到期再加载页面，或用现有 Cookie jar 调用刷新接口。成功刷新返回 `204`，刷新 Cookie 的值改变且截止不变，`users.last_login_at` 不改变。已轮换凭证在 10 秒并发窗口内返回 `409 REFRESH_CONFLICT`；窗口外再次提交会撤销会话。若一次刷新已提交但响应丢失，浏览器先报告临时故障，之后仍无法取得胜出请求的 Cookie 时可能需要重新登录。
 
 ## 测试与 Linux 镜像构建
 
@@ -195,7 +205,13 @@ go test ./...
 make build
 ```
 
-`make build` 默认先用 Node 22 构建 Homepage，再构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V1.1.0_20260901`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
+会话集成测试使用本机独立的 `fluffy_session_test` 库。对该库运行完整 Migration，设置 `FLUFFY_TEST_MYSQL_DSN` 后运行以下命令：
+
+```bash
+go test -race -count=1 ./internal/server -run '^TestAuthSessionMySQL$' -v
+```
+
+`make build` 默认先用 Node 22 构建 Homepage，再构建 `linux/amd64` 容器镜像 `fluffy-cupcake:V1.1.0_20261115`，不会生成适用于开发机的本地二进制文件。若部署服务器使用 ARM64：
 
 ```bash
 make build TARGET_PLATFORM=linux/arm64
@@ -214,7 +230,8 @@ make build TARGET_PLATFORM=linux/arm64
 | `DB_MAX_IDLE_CONNS` | `5` | 最大空闲连接数，不得大于打开数 |
 | `DB_CONN_MAX_LIFETIME` | `30m` | 单连接最长复用时间 |
 | `JWT_SECRET` | 无，必填 | HS256 签名密钥，至少 32 字符 |
-| `JWT_EXPIRE` | `24h` | 短期 JWT 有效期，Go duration 格式 |
+| `ACCESS_TOKEN_TTL` | `15m` | 访问 JWT 时长，上限为所属会话剩余时间。Go duration，至少 1 秒且为整秒 |
+| `SESSION_TTL` | `360h` | 从首次签发计算的固定会话时长。Go duration，至少 1 秒且为整秒 |
 
 `APP_MODE=release` 时 Cookie 自动启用 `Secure`；debug/test 保持 HttpOnly 和 SameSite，但允许本地 HTTP 登录。
 

@@ -1,3 +1,4 @@
+// auth.go 处理登录、刷新、退出和当前用户的 HTTP 接口。
 package handler
 
 import (
@@ -13,15 +14,15 @@ import (
 
 // AuthHandler 负责鉴权 HTTP 参数、Cookie 写入和安全错误响应。
 type AuthHandler struct {
-	auth         *service.AuthService
-	cookieName   string
-	cookieSecure bool
-	expire       time.Duration
+	auth              *service.AuthService
+	cookieName        string
+	refreshCookieName string
+	cookieSecure      bool
 }
 
 // NewAuthHandler 创建认证接口处理器。
-func NewAuthHandler(auth *service.AuthService, cookieName string, cookieSecure bool, expire time.Duration) *AuthHandler {
-	return &AuthHandler{auth: auth, cookieName: cookieName, cookieSecure: cookieSecure, expire: expire}
+func NewAuthHandler(auth *service.AuthService, cookieName string, cookieSecure bool) *AuthHandler {
+	return &AuthHandler{auth: auth, cookieName: cookieName, refreshCookieName: cookieName + "_refresh", cookieSecure: cookieSecure}
 }
 
 // LoginRequest 是用户名密码登录请求；密码不会写入任何日志。
@@ -30,14 +31,14 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
-// Login 校验请求并把短期 JWT 写入 HttpOnly Cookie。
+// Login 校验请求并把短期 JWT 和刷新凭证写入 HttpOnly Cookie。
 func (h *AuthHandler) Login(c *gin.Context) {
 	var request LoginRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "请输入用户名和密码"})
 		return
 	}
-	token, expiresAt, err := h.auth.Login(c.Request.Context(), request.Username, request.Password)
+	credentials, err := h.auth.Login(c.Request.Context(), request.Username, request.Password)
 	if errors.Is(err, service.ErrInvalidCredentials) {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "用户名或密码错误"})
 		return
@@ -47,7 +48,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "登录暂时不可用"})
 		return
 	}
-	h.setCookie(c, token, expiresAt, int(h.expire.Seconds()))
+	h.setCredentials(c, credentials)
 	c.JSON(http.StatusOK, gin.H{"message": "登录成功"})
 }
 
@@ -56,14 +57,14 @@ type QrLoginRequest struct {
 	Text string `json:"text" binding:"required,max=512"`
 }
 
-// QrLogin 按二维码永久文本查表登录并把短期 JWT 写入 HttpOnly Cookie。
+// QrLogin 按二维码永久文本查表登录并把短期 JWT 和刷新凭证写入 HttpOnly Cookie。
 func (h *AuthHandler) QrLogin(c *gin.Context) {
 	var request QrLoginRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "二维码内容无效"})
 		return
 	}
-	token, expiresAt, err := h.auth.LoginByQrText(c.Request.Context(), request.Text)
+	credentials, err := h.auth.LoginByQrText(c.Request.Context(), request.Text)
 	if errors.Is(err, service.ErrInvalidCredentials) {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "二维码无法识别"})
 		return
@@ -73,13 +74,44 @@ func (h *AuthHandler) QrLogin(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "登录暂时不可用"})
 		return
 	}
-	h.setCookie(c, token, expiresAt, int(h.expire.Seconds()))
+	h.setCredentials(c, credentials)
 	c.JSON(http.StatusOK, gin.H{"message": "登录成功"})
 }
 
-// Logout 通过过期同名 Cookie 清除浏览器认证信息。
+// Refresh 凭 HttpOnly 刷新 Cookie 续期，冲突和异常响应不会覆盖其他请求的新 Cookie。
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	refresh, _ := c.Cookie(h.refreshCookieName)
+	if refresh == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "NO_SESSION", "message": service.ErrInvalidSession.Error()})
+		return
+	}
+	credentials, err := h.auth.Refresh(c.Request.Context(), refresh)
+	switch {
+	case errors.Is(err, service.ErrInvalidSession):
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "SESSION_ENDED", "message": err.Error()})
+	case errors.Is(err, service.ErrRefreshConflict):
+		c.JSON(http.StatusConflict, gin.H{"code": "REFRESH_CONFLICT", "message": err.Error()})
+	case err != nil:
+		slog.Error("刷新登录会话失败", "error", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"message": "暂时无法恢复登录，请稍后重试"})
+	default:
+		h.setCredentials(c, credentials)
+		c.Status(http.StatusNoContent)
+	}
+}
+
+// Logout 撤销当前会话，成功后清除访问和刷新 Cookie。
 func (h *AuthHandler) Logout(c *gin.Context) {
-	h.setCookie(c, "", time.Unix(1, 0), -1)
+	refresh, _ := c.Cookie(h.refreshCookieName)
+	access, _ := c.Cookie(h.cookieName)
+	if err := h.auth.Logout(c.Request.Context(), refresh, access); err != nil {
+		slog.Error("撤销登录会话失败", "error", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"message": "暂时无法退出登录，请稍后重试"})
+		return
+	}
+	past := time.Unix(1, 0).UTC()
+	h.setCookie(c, h.cookieName, "/", "", past, -1)
+	h.setCookie(c, h.refreshCookieName, "/api/auth", "", past, -1)
 	c.JSON(http.StatusOK, gin.H{"message": "已退出登录"})
 }
 
@@ -103,12 +135,18 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": user.ID, "username": user.Username})
 }
 
-// setCookie 统一设置 HttpOnly、SameSite=Lax、Path=/ 和按环境区分的 Secure。
-func (h *AuthHandler) setCookie(c *gin.Context, value string, expires time.Time, maxAge int) {
+// setCredentials 用绝对截止时间写入认证 Cookie，刷新 Cookie 只发往认证路由。
+func (h *AuthHandler) setCredentials(c *gin.Context, credentials service.AuthCredentials) {
+	h.setCookie(c, h.cookieName, "/", credentials.AccessToken, credentials.AccessExpiresAt, 0)
+	h.setCookie(c, h.refreshCookieName, "/api/auth", credentials.RefreshToken, credentials.SessionExpiresAt, 0)
+}
+
+// setCookie 统一应用现有的 HttpOnly、SameSite=Lax 和按环境区分的 Secure 策略。
+func (h *AuthHandler) setCookie(c *gin.Context, name, path, value string, expires time.Time, maxAge int) {
 	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     h.cookieName,
+		Name:     name,
 		Value:    value,
-		Path:     "/",
+		Path:     path,
 		Expires:  expires,
 		MaxAge:   maxAge,
 		HttpOnly: true,

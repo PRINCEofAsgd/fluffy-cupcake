@@ -6,7 +6,7 @@ Homepage 的视觉与交互参考 [LeoninCS/Homepage](https://github.com/LeoninC
 
 ## 当前版本
 
-`V1.1.0_20260901`
+`V1.1.0_20261115`
 
 ## 快速开始
 
@@ -30,7 +30,7 @@ make test
 make build
 ```
 
-`make build` 先在 Docker 中构建 Homepage，再生成 `linux/amd64` 镜像 `fluffy-cupcake:V1.1.0_20260901`，不会在仓库中生成本机二进制。ARM64 Linux 服务器可使用 `make build TARGET_PLATFORM=linux/arm64`。
+`make build` 先在 Docker 中构建 Homepage，再生成 `linux/amd64` 镜像 `fluffy-cupcake:V1.1.0_20261115`，不会在仓库中生成本机二进制。ARM64 Linux 服务器可使用 `make build TARGET_PLATFORM=linux/arm64`。
 
 `compose.yaml` 保留给本地/独立单机开发；Sealos 生产环境由 Singapore Gin 应用通过 `DATABASE_DSN` 连接 Guangzhou Managed MySQL 的 External/Public Endpoint，不依赖 Compose 的 `mysql` service name。部署准备见 [部署指南](docs/user/deployment.md)，跨区域搬迁按 [数据库迁移 Runbook](docs/user/database-region-migration.md) 执行。
 
@@ -41,6 +41,7 @@ make build
 - [数据库结构](docs/structures/database-structure.md)
 - [开发指南](docs/user/development.md)
 - [部署指南](docs/user/deployment.md)
+- [局部更新部署](docs/user/incremental-deployments/README.md)
 - [数据库跨区域迁移 Runbook](docs/user/database-region-migration.md)
 - [操作手册](docs/user/user.md)
 - [版本说明](docs/user/release-notes.md)

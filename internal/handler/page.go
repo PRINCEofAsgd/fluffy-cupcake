@@ -14,9 +14,9 @@ import (
 
 // PageHandler 保存页面模板和静态资源文件系统。
 type PageHandler struct {
-	template       *template.Template
-	assets         fs.FS
-	homepage       []byte
+	template       *template.Template // 含有 Go 模板的 HTML，需先解析并保存为模板对象，在请求到来时执行模板
+	assets         fs.FS              // 静态资源文件系统，请求时按文件名读取。
+	homepage       []byte             // Vite 构建后的静态入口，由浏览器中的 React 创建，保存 HTML 原始字节
 	siteIcon       []byte
 	homepageAssets fs.FS
 	version        string

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/model"
 	mysqlDriver "github.com/go-sql-driver/mysql"
@@ -57,18 +56,6 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (model.User, err
 		FROM users
 		WHERE id = ?
 	`, id))
-}
-
-// UpdateLastLogin 在密码校验成功后记录服务端 UTC 登录时间，供 30 天未登录直接解绑判断。
-func (r *UserRepository) UpdateLastLogin(ctx context.Context, id int64, loginAt time.Time) error {
-	result, err := r.db.ExecContext(ctx, `UPDATE users SET last_login_at = ? WHERE id = ?`, loginAt.UTC(), id)
-	if err != nil {
-		return fmt.Errorf("更新最后登录时间: %w", err)
-	}
-	if _, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("读取最后登录更新结果: %w", err)
-	}
-	return nil
 }
 
 // scanUser 统一处理用户扫描与未找到错误映射。

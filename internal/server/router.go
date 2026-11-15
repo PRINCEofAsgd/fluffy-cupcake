@@ -30,14 +30,17 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 	qrLoginRepository := repository.NewQrLoginRepository(db)
 	companionRepository := repository.NewCompanionRepository(db)
 	clickRepository := repository.NewButtonClickRepository(db)
-	authService := service.NewAuthService(userRepository, qrLoginRepository, cfg.Auth.JWTSecret, cfg.Auth.JWTExpire)
+	sessionRepository := repository.NewAuthSessionRepository(db)
+	authService := service.NewAuthService(userRepository, qrLoginRepository, sessionRepository,
+		cfg.Auth.JWTSecret, cfg.Auth.AccessTokenTTL, cfg.Auth.SessionTTL)
 	companionService := service.NewCompanionService(companionRepository, userRepository)
 	clickService := service.NewButtonClickService(clickRepository, companionRepository)
-	authHandler := handler.NewAuthHandler(authService, cfg.Auth.CookieName, cfg.Auth.CookieSecure, cfg.Auth.JWTExpire)
+	authHandler := handler.NewAuthHandler(authService, cfg.Auth.CookieName, cfg.Auth.CookieSecure)
 	clickHandler := handler.NewButtonClickHandler(clickService)
 	companionHandler := handler.NewCompanionHandler(companionService)
 	requireAuth := middleware.RequireAuth(cfg.Auth.CookieName, authService)
 
+	// 页面和静态资源访问按目标 URL 或目录位置命名，例如 /yanlili 和 /assets/app.css
 	router.GET("/", pageHandler.Home)
 	router.GET("/favicon.png", pageHandler.SiteIcon)
 	router.GET("/favicon.ico", pageHandler.SiteIcon)
@@ -50,17 +53,23 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 	router.GET("/assets/app.js", pageHandler.Asset("app.js", "text/javascript; charset=utf-8", "public, max-age=3600"))
 	router.GET("/assets/qrdecoder.js", pageHandler.Asset("qrdecoder.js", "text/javascript; charset=utf-8", "public, max-age=3600"))
 
-	authAPI := router.Group("/api/auth")
+	// 业务接口以 /api 开头，按功能名称分组，同一组可包含 GET、POST 等方法
+
+	// 登录相关接口
+	authAPI := router.Group("/api/auth", middleware.NoStore)
 	authAPI.POST("/login", authHandler.Login)
 	authAPI.POST("/qr-login", authHandler.QrLogin)
+	authAPI.POST("/refresh", authHandler.Refresh)
 	authAPI.POST("/logout", authHandler.Logout)
 	authAPI.GET("/me", requireAuth, authHandler.Me)
 
+	// 点击相关接口
 	yanliliAPI := router.Group("/api/yanlili", requireAuth)
 	yanliliAPI.POST("/clicks", clickHandler.AddClicks)
 	yanliliAPI.GET("/clicks/stats", clickHandler.Stats)
 	yanliliAPI.GET("/clicks/details", clickHandler.Details)
 
+	// 绑定相关接口
 	companionAPI := router.Group("/api/companion", requireAuth)
 	companionAPI.GET("/state", companionHandler.State)
 	companionAPI.GET("/inbox", companionHandler.Inbox)

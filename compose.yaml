@@ -44,8 +44,8 @@ services:
     build:
       context: .
       args:
-        APP_VERSION: V1.1.0_20260901
-    image: fluffy-cupcake:V1.1.0_20260901
+        APP_VERSION: V1.1.0_20261115
+    image: fluffy-cupcake:V1.1.0_20261115
     restart: unless-stopped
     environment:
       APP_ADDR: 0.0.0.0:4819
@@ -53,7 +53,8 @@ services:
       # 这里的 mysql 是本 Compose 网络内的本地开发服务名，不能作为跨 Sealos Region 地址。
       DATABASE_DSN: ${MYSQL_USER:-fluffy_cupcake}:${MYSQL_PASSWORD:?请在 .env 配置 MYSQL_PASSWORD}@tcp(mysql:3306)/${MYSQL_DATABASE:-fluffy_cupcake}
       JWT_SECRET: ${JWT_SECRET:?请在 .env 配置 JWT_SECRET}
-      JWT_EXPIRE: ${JWT_EXPIRE:-24h}
+      ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-15m}
+      SESSION_TTL: ${SESSION_TTL:-360h}
     depends_on:
       mysql:
         condition: service_healthy

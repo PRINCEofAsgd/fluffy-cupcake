@@ -32,14 +32,19 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 		WHERE username = ?
 	`)).WithArgs("tester").WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "last_login_at", "created_at", "updated_at"}).
 		AddRow(int64(1), "tester", string(hash), nil, now, now))
-	mock.ExpectExec("UPDATE users SET last_login_at").WithArgs(sqlmock.AnyArg(), int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE users SET last_login_at").WithArgs(sqlmock.AnyArg(), int64(1), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO auth_sessions").WithArgs(sqlmock.AnyArg(), int64(1), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO auth_refresh_tokens").WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 
 	cfg := config.Config{
 		Mode: "test",
 		Auth: config.AuthConfig{
-			JWTSecret:  "test-secret-with-at-least-32-characters",
-			JWTExpire:  time.Hour,
-			CookieName: "auth",
+			JWTSecret:      "test-secret-with-at-least-32-characters",
+			AccessTokenTTL: 15 * time.Minute,
+			SessionTTL:     360 * time.Hour,
+			CookieName:     "auth",
 		},
 	}
 	router := NewRouter(cfg, db)
@@ -51,7 +56,7 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 		t.Fatalf("login status = %d, body = %s", login.Code, login.Body.String())
 	}
 	cookies := login.Result().Cookies()
-	if len(cookies) != 1 {
+	if len(cookies) != 2 {
 		t.Fatalf("Set-Cookie 数量 = %d", len(cookies))
 	}
 	authCookie := cookies[0]
@@ -59,6 +64,7 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 		t.Fatalf("认证 Cookie 属性 = %#v", authCookie)
 	}
 
+	expectActiveSession(mock)
 	mock.ExpectQuery(regexp.QuoteMeta(`
 		SELECT id, username, password_hash, last_login_at, created_at, updated_at
 		FROM users
@@ -73,6 +79,7 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 		t.Fatalf("me status = %d, body = %s", me.Code, me.Body.String())
 	}
 
+	expectActiveSession(mock)
 	expectActiveBinding(mock, 1, 9, 2, "partner", "亲爱的")
 	mock.ExpectExec("INSERT INTO button_click_minutes").
 		WithArgs("yanlili", sqlmock.AnyArg(), int64(6), int64(1), int64(9), int64(2), int64(6)).
@@ -86,6 +93,7 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 		t.Fatalf("click status = %d, body = %s", click.Code, click.Body.String())
 	}
 
+	expectActiveSession(mock)
 	expectActiveBinding(mock, 1, 9, 2, "partner", "亲爱的")
 	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(click_count\\), 0\\)").WithArgs(int64(1), int64(2), "yanlili").
 		WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(int64(6)))
@@ -111,6 +119,13 @@ func TestAuthAndClickHTTPFlow(t *testing.T) {
 	}
 }
 
+// expectActiveSession 模拟访问 JWT 对应的未撤销会话。
+func expectActiveSession(mock sqlmock.Sqlmock) {
+	mock.ExpectQuery("SELECT 1 FROM auth_sessions").WithArgs(sqlmock.AnyArg(), int64(1), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"active"}).AddRow(1))
+}
+
+// expectActiveBinding 模拟当前会话用户的活跃绑定。
 func expectActiveBinding(mock sqlmock.Sqlmock, userID, bindingID, partnerID int64, username, note string) {
 	mock.ExpectQuery("SELECT membership.binding_id, membership.partner_user_id, partner.username").
 		WithArgs(userID, userID).

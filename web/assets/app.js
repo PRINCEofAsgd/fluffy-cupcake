@@ -57,6 +57,9 @@
   let retryTimer = 0;
   let requestInFlight = false;
   let currentUser = null;
+  let refreshInFlight = null;
+  let refreshGeneration = 0;
+  const loginMarker = "fluffy-cupcake-signed-in";
   let currentBinding = { bound: false };
   let statsDirection = "mine";
   let detailPage = 1;
@@ -78,17 +81,94 @@
     return;
   }
 
-  // requestJSON 统一发送同源 JSON 请求；HttpOnly Cookie 由浏览器自动携带。
-  const requestJSON = async (url, options = {}) => {
+  // fetchJSON 执行一次同源请求并保留状态码，供鉴权流程区分中间件拒绝和业务错误。
+  const fetchJSON = async (url, options = {}) => {
     const response = await fetch(url, {
       credentials: "same-origin",
       ...options,
       headers: options.body ? { "Content-Type": "application/json", ...options.headers } : options.headers,
     });
     const body = await response.json().catch(() => ({}));
+    return { response, body };
+  };
+
+  // authRequired 只识别鉴权中间件在业务 Handler 执行之前发出的拒绝。
+  const authRequired = ({ response, body }) => response.status === 401 && body.code === "AUTH_REQUIRED";
+
+  // sessionUnavailable 表示原业务请求还未执行，可以在暂时故障恢复后重试。
+  const sessionUnavailable = () => Object.assign(
+    new Error("暂时无法校验登录，请检查网络或稍后重试"), { safeToRetry: true },
+  );
+
+  // signedInBefore 记录是否曾登录，用于在刷新 Cookie 自然到期后显示重新登录提示。
+  const signedInBefore = () => {
+    try { return localStorage.getItem(loginMarker) === "1"; } catch { return false; }
+  };
+
+  // rememberLogin 只保存界面状态，认证凭证始终由浏览器 Cookie 管理。
+  const rememberLogin = (signedIn) => {
+    try {
+      if (signedIn) localStorage.setItem(loginMarker, "1");
+      else localStorage.removeItem(loginMarker);
+    } catch { /* 禁用本地存储时仍可正常登录。 */ }
+  };
+
+  // hasValidAccess 检查浏览器是否已收到其他标签页签发的新访问 Cookie。
+  const hasValidAccess = async () => {
+    const result = await fetchJSON("/api/auth/me");
+    if (result.response.ok) return true;
+    if (authRequired(result)) return false;
+    throw sessionUnavailable();
+  };
+
+  // recoverSession 协调同源标签页的轮换；浏览器不支持 Web Locks 时由后端识别并发。
+  const recoverSession = async () => {
+    const recover = async () => {
+      if (await hasValidAccess()) return;
+      const { response, body } = await fetchJSON("/api/auth/refresh", { method: "POST" });
+      if (response.ok) return;
+      if (response.status === 401 && (body.code === "SESSION_ENDED" || body.code === "NO_SESSION")) {
+        const prompt = body.code === "SESSION_ENDED" || Boolean(currentUser) || signedInBefore();
+        setAuthenticated(null);
+        if (prompt && authStatus instanceof HTMLElement) authStatus.textContent = "登录已失效，请重新登录";
+        throw Object.assign(new Error(prompt ? "登录已失效，请重新登录" : "请先登录"), { sessionEnded: true });
+      }
+      if (response.status === 409 && body.code === "REFRESH_CONFLICT") {
+        // 等待获胜请求写入共享 Cookie，只用只读接口检查，避免再次轮换或重复提交写入。
+        for (const delay of [100, 250, 500, 1000, 1500]) {
+          await new Promise((resolve) => window.setTimeout(resolve, delay));
+          if (await hasValidAccess()) return;
+        }
+      }
+      throw sessionUnavailable();
+    };
+    try {
+      if (navigator.locks?.request) await navigator.locks.request("fluffy-cupcake-auth-refresh", recover);
+      else await recover();
+      refreshGeneration += 1;
+    } catch (error) {
+      if (error.sessionEnded) throw error;
+      throw sessionUnavailable();
+    }
+  };
+
+  // requestJSON 合并同页并发刷新，只重放被中间件拦截的原请求一次。
+  const requestJSON = async (url, options = {}) => {
+    const generation = refreshGeneration;
+    let result = await fetchJSON(url, options);
+    if (authRequired(result)) {
+      if (generation === refreshGeneration) {
+        refreshInFlight ??= recoverSession().finally(() => { refreshInFlight = null; });
+        await refreshInFlight;
+      }
+      result = await fetchJSON(url, options);
+      if (authRequired(result)) throw sessionUnavailable();
+    }
+    const { response, body } = result;
     if (!response.ok) {
       const error = new Error(body.message || "请求失败");
       error.status = response.status;
+      error.safeToRetry = response.status === 503 && body.code === "AUTH_UNAVAILABLE";
       throw error;
     }
     return body;
@@ -116,6 +196,7 @@
   const setAuthenticated = (user) => {
     currentUser = user || null;
     const authenticated = Boolean(currentUser);
+    rememberLogin(authenticated);
     if (loginButton instanceof HTMLButtonElement) loginButton.hidden = authenticated;
     if (logoutButton instanceof HTMLButtonElement) logoutButton.hidden = !authenticated;
     if (inboxButton instanceof HTMLButtonElement) inboxButton.hidden = !authenticated;
@@ -125,6 +206,8 @@
     if (!authenticated) {
       currentBinding = { bound: false };
       pendingClicks = 0;
+      window.clearTimeout(retryTimer);
+      retryTimer = 0;
       setLoginPanel(false);
       setPanel(companionPanel, false);
       setPanel(inboxPanel, false);
@@ -187,9 +270,10 @@
       });
       if (syncStatus instanceof HTMLElement) syncStatus.textContent = "已同步";
     } catch (error) {
-      if (error.status === 401) setAuthenticated(null);
       if (error.status === 409) await loadCompanionState().catch(() => {});
-      if (syncStatus instanceof HTMLElement) syncStatus.textContent = "统计读取失败";
+      if (!error.sessionEnded && syncStatus instanceof HTMLElement) {
+        syncStatus.textContent = error.safeToRetry ? error.message : "统计读取失败";
+      }
     }
   };
 
@@ -209,16 +293,18 @@
       if (syncStatus instanceof HTMLElement) syncStatus.textContent = pendingClicks > 0 ? `待同步 ${pendingClicks} 次` : "已同步";
       void loadStats();
     } catch (error) {
-      pendingClicks += batch;
-      if (error.status === 401) {
-        setAuthenticated(null);
-      } else if (error.status === 409) {
+      if (error.sessionEnded) return;
+      if (error.status === 409) {
         pendingClicks = 0;
         await loadCompanionState().catch(() => {});
-      } else {
-        if (syncStatus instanceof HTMLElement) syncStatus.textContent = `同步失败，保留 ${pendingClicks} 次待重试`;
+      } else if (error.safeToRetry && currentUser && currentBinding.bound) {
+        pendingClicks += batch;
+        if (syncStatus instanceof HTMLElement) syncStatus.textContent = `登录校验暂未恢复，保留 ${pendingClicks} 次待重试`;
         window.clearTimeout(retryTimer);
         retryTimer = window.setTimeout(() => { retryTimer = 0; void flushClicks(); }, 2000);
+      } else if (syncStatus instanceof HTMLElement) {
+        // 写请求发出后连接中断时可能已经写入，自动重发会重复计数。
+        syncStatus.textContent = "这批点击的同步结果未知，请查看记录";
       }
     } finally {
       requestInFlight = false;
@@ -364,17 +450,22 @@
     if (detailsButton instanceof HTMLButtonElement) detailsButton.hidden = !data.items?.length;
   };
 
+  // loadDetails 加载历史分页，临时鉴权故障时保留当前页并给出反馈。
   const loadDetails = async () => {
     if (!(partnerSelect instanceof HTMLSelectElement) || !partnerSelect.value) return;
-    const data = await requestJSON(`/api/yanlili/clicks/details?partner_id=${encodeURIComponent(partnerSelect.value)}&page=${detailPage}`);
-    detailTotalPages = data.total_pages ?? 0;
-    renderList(detailsList, data.items ?? [], (item) => {
-      const direction = item.direction === "mine" ? "我想ta" : "ta想我";
-      return `${new Date(item.time).toLocaleString()} · ${direction} · ${item.count} 次`;
-    });
-    if (pageStatus instanceof HTMLElement) pageStatus.textContent = `第 ${data.page} / ${Math.max(data.total_pages, 1)} 页`;
-    if (previousPage instanceof HTMLButtonElement) previousPage.disabled = data.page <= 1;
-    if (nextPage instanceof HTMLButtonElement) nextPage.disabled = data.total_pages === 0 || data.page >= data.total_pages;
+    try {
+      const data = await requestJSON(`/api/yanlili/clicks/details?partner_id=${encodeURIComponent(partnerSelect.value)}&page=${detailPage}`);
+      detailTotalPages = data.total_pages ?? 0;
+      renderList(detailsList, data.items ?? [], (item) => {
+        const direction = item.direction === "mine" ? "我想ta" : "ta想我";
+        return `${new Date(item.time).toLocaleString()} · ${direction} · ${item.count} 次`;
+      });
+      if (pageStatus instanceof HTMLElement) pageStatus.textContent = `第 ${data.page} / ${Math.max(data.total_pages, 1)} 页`;
+      if (previousPage instanceof HTMLButtonElement) previousPage.disabled = data.page <= 1;
+      if (nextPage instanceof HTMLButtonElement) nextPage.disabled = data.total_pages === 0 || data.page >= data.total_pages;
+    } catch (error) {
+      if (!error.sessionEnded && pageStatus instanceof HTMLElement) pageStatus.textContent = error.message;
+    }
   };
 
   // confirmUnbindRequest 在发送任何解绑请求前连续取得三次明确确认。
@@ -663,7 +754,13 @@
     setPanel(companionPanel, true, "#companion-username");
   });
 
-  inboxButton?.addEventListener("click", () => { setPanel(inboxPanel, true); void loadInbox(); });
+  inboxButton?.addEventListener("click", () => {
+    setPanel(inboxPanel, true);
+    if (inboxMessage instanceof HTMLElement) inboxMessage.textContent = "";
+    void loadInbox().catch((error) => {
+      if (!error.sessionEnded && inboxMessage instanceof HTMLElement) inboxMessage.textContent = error.message;
+    });
+  });
   noteButton?.addEventListener("click", () => {
     if (partnerNote instanceof HTMLInputElement) partnerNote.value = currentBinding.partner_note || "";
     setPanel(notePanel, true, "#partner-note");
@@ -776,7 +873,12 @@
 
   logoutButton?.addEventListener("click", async () => {
     await flushClicks();
-    try { await requestJSON("/api/auth/logout", { method: "POST" }); } finally { setAuthenticated(null); }
+    try {
+      await requestJSON("/api/auth/logout", { method: "POST" });
+      setAuthenticated(null);
+    } catch {
+      if (authStatus instanceof HTMLElement) authStatus.textContent = "暂时无法退出登录，请稍后重试";
+    }
   });
 
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") void flushClicks(true); });
@@ -784,5 +886,9 @@
 
   void requestJSON("/api/auth/me")
     .then(async (user) => { setAuthenticated(user); await Promise.all([loadCompanionState(), loadPartners()]); })
-    .catch(() => setAuthenticated(null));
+    .catch((error) => {
+      if (!error.sessionEnded && authStatus instanceof HTMLElement) {
+        authStatus.textContent = currentUser ? "暂时无法加载登录数据，请稍后刷新页面" : "暂时无法检查登录状态，请稍后刷新页面";
+      }
+    });
 })();

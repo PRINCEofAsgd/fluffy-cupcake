@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/config"
+	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/version"
 )
 
 // TestHomepage 验证根路径返回 Loki Yin Homepage，并保留完整资料、资源加载门、来源说明和独立安全策略。
@@ -28,7 +29,7 @@ func TestHomepage(t *testing.T) {
 	body := response.Body.String()
 	for _, expected := range []string{
 		"<title>Loki Yin's Homepage</title>",
-		`href="/favicon.png?v=V1.1.0_20260901"`,
+		`href="/favicon.png?v=` + version.Current + `"`,
 		"页面参考 github.com/LeoninCS/Homepage 设计。",
 		"/homepage/images/fora-hero-foreground.png",
 	} {
@@ -148,7 +149,7 @@ func TestYanliliPage(t *testing.T) {
 	if strings.Contains(response.Body.String(), "/assets/miss-pop.mp3") {
 		t.Fatal("页面不应再加载 MP3，点击音效应由 Web Audio 合成")
 	}
-	if !strings.Contains(response.Body.String(), `href="/favicon.png?v=V1.1.0_20260901"`) {
+	if !strings.Contains(response.Body.String(), `href="/favicon.png?v=`+version.Current+`"`) {
 		t.Fatal("想念页面缺少全站统一 PNG 标签图标")
 	}
 	if strings.Contains(response.Body.String(), "/assets/miss-button.png") || strings.Contains(response.Body.String(), "loki-yin-avatar.png") {

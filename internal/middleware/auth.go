@@ -1,7 +1,10 @@
-// Package middleware 提供跨业务接口复用的 Gin 鉴权中间件。
+// auth.go 提供跨业务接口复用的，带身份请求的鉴权
 package middleware
 
 import (
+	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/PRINCEofAsgd/fluffy-cupcake/internal/service"
@@ -13,22 +16,34 @@ const (
 	contextUsernameKey = "auth_username"
 )
 
-// TokenParser 描述 Middleware 所需的 JWT 解析能力，便于独立测试。
-type TokenParser interface {
-	ParseToken(raw string) (service.AuthClaims, error)
+// AccessAuthenticator 描述受保护路由所需的访问 JWT 与会话校验能力。
+type AccessAuthenticator interface {
+	Authenticate(ctx context.Context, raw string) (service.AuthClaims, error)
 }
 
-// RequireAuth 从 HttpOnly Cookie 校验 JWT，并把可信身份写入 Gin Context。
-func RequireAuth(cookieName string, parser TokenParser) gin.HandlerFunc {
+// NoStore 阻止浏览器和中间缓存复用含会话状态的响应。
+func NoStore(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Next()
+}
+
+// RequireAuth 先校验访问 JWT 与会话状态，再把可信身份写入 Gin Context。
+func RequireAuth(cookieName string, auth AccessAuthenticator) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
 		raw, err := c.Cookie(cookieName)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "请先登录"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": "AUTH_REQUIRED", "message": "请先登录"})
 			return
 		}
-		claims, err := parser.ParseToken(raw)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "认证信息无效或已过期"})
+		claims, err := auth.Authenticate(c.Request.Context(), raw)
+		switch {
+		case errors.Is(err, service.ErrInvalidToken):
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": "AUTH_REQUIRED", "message": err.Error()})
+			return
+		case err != nil:
+			slog.Error("访问鉴权暂时不可用", "error", err)
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"code": "AUTH_UNAVAILABLE", "message": "登录校验暂时不可用，请稍后重试"})
 			return
 		}
 		c.Set(contextUserIDKey, claims.UserID)

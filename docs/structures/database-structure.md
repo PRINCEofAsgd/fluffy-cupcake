@@ -11,7 +11,7 @@
 | `id` | `BIGINT UNSIGNED` | 否 | `AUTO_INCREMENT` | 主键 |
 | `username` | `VARCHAR(64)` | 否 | 无 | 唯一登录用户名 |
 | `password_hash` | `VARCHAR(255)` | 否 | 无 | bcrypt 哈希，禁止保存明文 |
-| `last_login_at` | `TIMESTAMP` | 是 | `NULL` | 最近一次密码登录 UTC 时间；用于 30 天未登录直接解绑 |
+| `last_login_at` | `TIMESTAMP` | 是 | `NULL` | 最近一次密码或二维码登录成功的 UTC 时间；用于 30 天未登录直接解绑，刷新不更新此字段 |
 | `created_at` | `TIMESTAMP` | 否 | `CURRENT_TIMESTAMP` | UTC 创建时间 |
 | `updated_at` | `TIMESTAMP` | 否 | 自动创建/更新 | UTC 更新时间 |
 
@@ -87,6 +87,32 @@
 
 约束：`PRIMARY KEY(id)`、`UNIQUE KEY uk_qr_login_text(qr_text)`、外键 `fk_qr_login_user` 指向 `users(id)` 且使用 `RESTRICT`。扫码登录与密码登录完全等价：服务端在文本映射成功后同样更新该用户 `last_login_at`，30 天未登录判定不区分登录方式。
 
+## `auth_sessions`
+
+每次密码或扫码登录成功新建一行。会话创建、第一枚刷新凭证和 `users.last_login_at` 同事务提交。
+
+| 字段 | 类型 | NULL | 说明 |
+| --- | --- | --- | --- |
+| `id` | `CHAR(22) CHARACTER SET ascii COLLATE ascii_bin` | 否 | 主键，128 位随机标识的 Base64URL 编码 |
+| `user_id` | `BIGINT UNSIGNED` | 否 | 所属用户 |
+| `created_at` | `DATETIME(6)` | 否 | 首次签发 UTC 时间 |
+| `expires_at` | `DATETIME(6)` | 否 | 固定 UTC 截止，默认首次签发后 15 天 |
+| `revoked_at` | `DATETIME(6)` | 是 | 默认 `NULL`；退出或检测到重用时写入 UTC 撤销时间 |
+
+索引与约束：`PRIMARY KEY(id)`、`idx_auth_sessions_user(user_id)`、`fk_auth_sessions_user` 指向 `users(id)` 并使用 `ON DELETE CASCADE`。访问 JWT 通过会话主键检查撤销与过期状态。
+
+## `auth_refresh_tokens`
+
+每代刷新凭证只保存 SHA-256 哈希。刷新时先锁定所属会话行，在同一事务标记旧哈希和写入新哈希，保留历史以检测重用。并发窗口为 10 秒，窗口内重用只返回冲突，窗口外重用撤销会话。
+
+| 字段 | 类型 | NULL | 说明 |
+| --- | --- | --- | --- |
+| `token_hash` | `BINARY(32)` | 否 | 主键，刷新凭证的 SHA-256 哈希 |
+| `session_id` | `CHAR(22) CHARACTER SET ascii COLLATE ascii_bin` | 否 | 所属会话 |
+| `rotated_at` | `DATETIME(6)` | 是 | 默认 `NULL` 表示当前凭证；历史凭证为轮换 UTC 时间 |
+
+索引与约束：`PRIMARY KEY(token_hash)`、`idx_auth_refresh_tokens_session(session_id)`、`fk_auth_refresh_tokens_session` 指向 `auth_sessions(id)` 并使用 `ON DELETE CASCADE`。
+
 ## Migration
 
 - `000001_create_users.up/down.sql`：创建/删除固定用户表。
@@ -95,6 +121,7 @@
 - `000004_remove_utc_click_date.up/down.sql`：移除只表达 UTC 日期且会和浏览器本地日期冲突的生成列及索引；Down 可完整恢复。
 - `000005_add_unbind_request_states.up/down.sql`：增加解绑子状态和处理人/时间，升级时回填已有待处理、双方接受或长期未登录结果；Down 会先清除已取消/已拒绝的旧申请人，避免旧程序误判为待处理。
 - `000006_create_qr_login_mappings.up/down.sql`：创建/删除二维码文本到用户的一一映射表，Down 为直接 DROP TABLE。
+- `000007_create_auth_sessions.up/down.sql`：新建会话和刷新凭证哈希表，无需回填；Down 删除两张表及其中所有会话。
 
 `000003` 不弃用也不删除原点击表。升级后可按明确指定的现有用户补 `target_user_id`，同时保持 `companion_binding_id = NULL`；这不会创建绑定信件。双方以后正常接受唯一一封真实邀请后，详细记录会按用户对呈现这些旧数据。
 

@@ -264,8 +264,13 @@ verify_snapshots() {
   snapshot "$old_config" "$temp_dir/OLD"
   snapshot "$new_config" "$temp_dir/NEW"
 
+  # 从 v7 起两张会话表必须存在；旧库的全库搬迁仍按源库结构校验。
+  local expected_tables="$EXPECTED_TABLES"
+  if awk -F $'\t' '$1 >= 7 { found=1 } END { exit !found }' "$temp_dir/OLD/schema-migrations.tsv"; then
+    expected_tables+=" auth_sessions auth_refresh_tokens"
+  fi
   verify_failed=0
-  for table in $EXPECTED_TABLES; do
+  for table in $expected_tables; do
     if ! awk -F $'\t' -v table="$table" '$1 == table { found=1 } END { exit !found }' "$temp_dir/OLD/tables.tsv"; then
       printf '[缺失] OLD 没有仓库预期表 %s\n' "$table" >&2
       verify_failed=1
@@ -285,7 +290,7 @@ verify_snapshots() {
   compare_file temporal-stats.tsv
 
   printf '\n关键业务表行数（OLD；NEW 必须完全一致）\n'
-  awk -F $'\t' '$1 == "users" || $1 == "button_click_minutes" || $1 == "companion_bindings" || $1 == "companion_active_memberships" || $1 == "qr_login_mappings"' "$temp_dir/OLD/row-counts.tsv"
+  awk -F $'\t' '$1 == "users" || $1 == "button_click_minutes" || $1 == "companion_bindings" || $1 == "companion_active_memberships" || $1 == "qr_login_mappings" || $1 == "auth_sessions" || $1 == "auth_refresh_tokens"' "$temp_dir/OLD/row-counts.tsv"
 
   if [[ "$verify_failed" -ne 0 ]]; then
     die 'OLD/NEW 验证失败；保持停写，不要切换 DATABASE_DSN'

@@ -45,13 +45,15 @@ export NEW_DB_NAME='fluffy_cupcake'
 make db-preflight SIDE=OLD
 ```
 
-脚本等价覆盖 `SELECT VERSION()`、`SELECT DATABASE()`、`SHOW TABLES`、`SELECT version, dirty FROM schema_migrations`，并自动对库内所有 base table 执行精确 `COUNT(*)`。另在 Sealos 控制台确认旧库自动备份最近一次任务成功、磁盘余量充足，记录应用当前副本数和 `DATABASE_DSN` Secret 的旧版本（不要复制 Secret 到本地文档）。当前仓库预期 `schema_migrations` 为单行 `version=6, dirty=0`，业务表为：
+脚本等价覆盖 `SELECT VERSION()`、`SELECT DATABASE()`、`SHOW TABLES`、`SELECT version, dirty FROM schema_migrations`，并自动对库内所有 base table 执行精确 `COUNT(*)`。另在 Sealos 控制台确认旧库自动备份最近一次任务成功、磁盘余量充足，记录应用当前副本数和 `DATABASE_DSN` Secret 的旧版本（不要复制 Secret 到本地文档）。以当前生产镜像对应的 schema 版本为准，`schema_migrations` 应只有一行且为 `dirty=0`。版本 6 的业务表如下：
 
 - `users`
 - `button_click_minutes`
 - `companion_bindings`
 - `companion_active_memberships`
 - `qr_login_mappings`
+
+版本 7 还包含 `auth_sessions` 与 `auth_refresh_tokens`。跨区搬迁保持源库原有版本，应用升级按独立的局部更新部署手册执行。
 
 **成功判据**：连接成功、数据库名正确、上述表与 `schema_migrations` 均存在、`dirty=0`，行数和时间统计可读取。
 
@@ -140,7 +142,7 @@ mysql --host="$NEW_DB_HOST" --port="$NEW_DB_PORT" \
 make db-preflight SIDE=OLD
 ```
 
-重点比较所有表行数及关键表更新时间，第二次检查之间不要恢复应用。
+重点比较所有表行数及关键表更新时间，两次检查之间保持应用停止。版本 7 的登录、刷新与退出都会写入会话数据。
 
 **成功判据**：应用无运行副本/无写入口，两次源库基线不再变化。
 
@@ -221,7 +223,7 @@ make db-preflight SIDE=NEW
 make db-verify
 ```
 
-`db-verify` 自动比较：全部 base table/引擎/collation、每表精确行数、`schema_migrations`、全部列定义、PK、UNIQUE/普通索引、所有外键和规则，以及每个 `DATE/DATETIME/TIMESTAMP` 列在 UTC session 下的非空数、最小值、最大值。它也强制检查仓库六张预期表，并单列用户、点击、绑定、当前绑定和二维码映射行数。
+`db-verify` 自动比较：全部 base table/引擎/collation、每表精确行数、`schema_migrations`、全部列定义、PK、UNIQUE/普通索引、所有外键和规则，以及每个 `DATE/DATETIME/TIMESTAMP` 列在 UTC session 下的非空数、最小值、最大值。它也检查核心表，并在源库版本至少为 7 时检查会话表与刷新凭证表。
 
 可在两边 Database Studio 补充人工抽查（不要导出密码哈希或完整二维码文本）：
 
@@ -336,7 +338,7 @@ fluffy_cupcake_app:<NEW_RANDOM_PASSWORD>@tcp(<GUANGZHOU_PUBLIC_ENDPOINT>:3306)/f
 
 ### A. 刚切换，广州尚无新业务写入
 
-1. [需要人工在 Sealos 操作] 将 Singapore App 缩容为 0，确认广州无登录、点击或其他业务写入。
+1. [需要人工在 Sealos 操作] 将 Singapore App 缩容为 0，确认广州无登录、刷新、退出、点击或其他业务写入。
 2. 把 `DATABASE_DSN` Secret 改回原 Singapore 地址和旧应用账号，重新部署 1 个副本。
 3. 检查启动 Ping、`/healthz`、登录、JWT、绑定只读接口、统计和二维码映射，再恢复副本数。
 4. 广州实例保持不写并保留，调查根因；不要删除 dump 或任一数据库。
@@ -346,7 +348,7 @@ fluffy_cupcake_app:<NEW_RANDOM_PASSWORD>@tcp(<GUANGZHOU_PUBLIC_ENDPOINT>:3306)/f
 ### B. 广州已经产生新业务数据
 
 1. [需要人工在 Sealos 操作] 立即将 Singapore App 缩容为 0，冻结广州；分别创建 OLD/NEW 平台备份和完整 dump。
-2. 记录切换 UTC 时间、Smoke Test 写入及业务写入范围；对比 `users.last_login_at/updated_at`、`button_click_minutes`、绑定表和二维码映射的增量。
+2. 记录切换 UTC 时间、Smoke Test 写入及业务写入范围；对比 `users.last_login_at/updated_at`、`button_click_minutes`、绑定表、二维码映射、会话和刷新凭证哈希的增量。
 3. 优先修复广州并继续以广州为唯一源。若确实必须回旧库，先设计、审阅并演练针对实际差异的增量同步；由于分钟桶使用 Upsert、绑定有事务状态机，不能用整表覆盖或盲目重放 SQL。
 4. 增量同步完成并重新验证后，才允许把 DSN 切回旧库并做完整冒烟。
 

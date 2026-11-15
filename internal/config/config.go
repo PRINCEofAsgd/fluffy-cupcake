@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	defaultAddress    = "0.0.0.0:4819"
-	defaultMode       = "debug"
-	defaultJWTExpire  = 24 * time.Hour
-	defaultCookieName = "fluffy_cupcake_auth"
+	defaultAddress        = "0.0.0.0:4819"
+	defaultMode           = "debug"
+	defaultAccessTokenTTL = 15 * time.Minute
+	defaultSessionTTL     = 360 * time.Hour
+	defaultCookieName     = "fluffy_cupcake_auth"
 )
 
 // Config 表示 Web 服务运行所需的配置。
@@ -35,10 +36,11 @@ type DatabaseConfig struct {
 
 // AuthConfig 保存 JWT 与认证 Cookie 配置；Secret 只从环境变量读取。
 type AuthConfig struct {
-	JWTSecret    string
-	JWTExpire    time.Duration
-	CookieName   string
-	CookieSecure bool
+	JWTSecret      string
+	AccessTokenTTL time.Duration
+	SessionTTL     time.Duration
+	CookieName     string
+	CookieSecure   bool
 }
 
 // Load 从环境变量加载配置，并校验需要解析的数值与时长格式。
@@ -56,7 +58,11 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	jwtExpire, err := positiveDuration("JWT_EXPIRE", defaultJWTExpire)
+	accessTTL, err := tokenDuration("ACCESS_TOKEN_TTL", defaultAccessTokenTTL)
+	if err != nil {
+		return Config{}, err
+	}
+	sessionTTL, err := tokenDuration("SESSION_TTL", defaultSessionTTL)
 	if err != nil {
 		return Config{}, err
 	}
@@ -71,10 +77,11 @@ func Load() (Config, error) {
 			ConnMaxLifetime: connMaxLifetime,
 		},
 		Auth: AuthConfig{
-			JWTSecret:    os.Getenv("JWT_SECRET"),
-			JWTExpire:    jwtExpire,
-			CookieName:   defaultCookieName,
-			CookieSecure: mode == "release",
+			JWTSecret:      os.Getenv("JWT_SECRET"),
+			AccessTokenTTL: accessTTL,
+			SessionTTL:     sessionTTL,
+			CookieName:     defaultCookieName,
+			CookieSecure:   mode == "release",
 		},
 	}, nil
 }
@@ -134,6 +141,18 @@ func positiveDuration(key string, fallback time.Duration) (time.Duration, error)
 	value, err := time.ParseDuration(raw)
 	if err != nil || value <= 0 {
 		return 0, fmt.Errorf("%s 必须是正数 Go duration，例如 24h", key)
+	}
+	return value, nil
+}
+
+// tokenDuration 校验认证时长至少为 1 秒，且与 JWT 和 Cookie 的秒级时间精度一致。
+func tokenDuration(key string, fallback time.Duration) (time.Duration, error) {
+	value, err := positiveDuration(key, fallback)
+	if err != nil {
+		return 0, err
+	}
+	if value < time.Second || value%time.Second != 0 {
+		return 0, fmt.Errorf("%s 必须是至少 1 秒的整秒时长", key)
 	}
 	return value, nil
 }

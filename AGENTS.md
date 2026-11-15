@@ -2,6 +2,7 @@
 
 每次工作都先参考本文档，并遵循以下规则进行工作。
 
+
 ## 理解项目
 
 默认按以下顺序，按需结合项目内容理解项目，若有指定内容可以优先理解指定文档
@@ -17,15 +18,15 @@
 - 操作手册文档 [docs/user/user.md](docs/user/user.md)
 - 项目源码 
 - 其他相关项目规则文档索引(暂无)
-- 版本说明文档
-    - [docs/user/release-notes.md](docs/user/release-notes.md)
+- 版本说明文档 [docs/user/release-notes.md](docs/user/release-notes.md)
 - 项目工作记录目录 [docs/record/](docs/record/)
 
 其他工作相关文档
+- 部署文档 [docs/user/deployment.md](docs/user/deployment.md)
+- 局部更新部署文档目录 [docs/user/incremental-deployments/](docs/user/incremental-deployments/README.md)
 - [.dockerignore](.dockerignore)
 - [.gitignore](.gitignore)
 - 待办事项文档 [todo-list.md](docs/record/todo-list.md)
-
 
 
 ### 文档职责
@@ -41,8 +42,6 @@
 - 待办事项文档是面向开发者的便签，不面向工作，不主动修改
 
 
-
-
 ## 工作方式
 
 按以下工作情形选择工作边界
@@ -50,7 +49,7 @@
 - 若要求分析或计划 bug 修复、迭代技术选型，则非特定要求不对项目文件进行修改
 - 若要求修改迭代：
     - 编写代码过程中对每个文件的功能和每个函数的功能和部分重要代码处写中文注释
-    - 如有需要，编写完对说明文档、结构文档、调用链文档、数据库结构文档、开发文档、版本说明文档、操作手册文档、.dockerignore、.gitignore进行更新
+    - 如有需要，编写完对说明文档、结构文档、调用链文档、数据库结构文档、开发文档、版本说明文档、操作手册文档、部署文档、局部更新部署文档、.dockerignore、.gitignore进行更新
     - 将工作内容记录在上下文文档的新一个或下一个 Step 中，新 Step 记录在旧 Step 的上方
 
 
@@ -75,4 +74,5 @@
     - 日期：每次工作完后修改
     - 例：V1.3.8_20260617
 - 如有需要，对具体平台产物的整体功能描述进行修改
+- 在局部更新部署文档目录下，按上一次部署版本区分单个局部更新部署文档，记录当前版本相较于上个版本需要进行的局部更新部署工作，在明确说明已进行一次部署时以当前版本为上一次部署版本建立新的局部更新部署文档
 - 根据结构文档最后中记录的所有版号相关文档、打包脚本、代码等内容，进行所有相关版号记录的更新

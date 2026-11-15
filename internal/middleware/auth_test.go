@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"errors"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,9 +12,10 @@ import (
 
 type fakeTokenParser struct{}
 
-func (fakeTokenParser) ParseToken(raw string) (service.AuthClaims, error) {
+// Authenticate 模拟有效和无效的访问凭证。
+func (fakeTokenParser) Authenticate(_ context.Context, raw string) (service.AuthClaims, error) {
 	if raw != "valid-token" {
-		return service.AuthClaims{}, errors.New("invalid")
+		return service.AuthClaims{}, service.ErrInvalidToken
 	}
 	return service.AuthClaims{UserID: 42, Username: "tester"}, nil
 }

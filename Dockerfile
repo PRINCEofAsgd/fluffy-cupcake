@@ -13,7 +13,7 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 COPY --from=homepage-builder /src/web/homepage/dist ./web/homepage/dist
-ARG APP_VERSION=V1.1.0_20260901
+ARG APP_VERSION=V1.1.0_20261115
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 RUN --mount=type=cache,target=/go/pkg/mod \
