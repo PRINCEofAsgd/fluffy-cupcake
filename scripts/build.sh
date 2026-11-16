@@ -2,7 +2,7 @@
 # 本脚本构建指定架构的 Linux 容器镜像，不生成本机二进制文件。
 set -eu
 
-app_version="${APP_VERSION:-V1.1.0_20261115}"
+app_version="${APP_VERSION:-V1.1.0_20261116}"
 target_platform="${TARGET_PLATFORM:-linux/amd64}"
 image="${IMAGE:-fluffy-cupcake:${app_version}}"
 

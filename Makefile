@@ -1,6 +1,6 @@
 .PHONY: dev test build homepage-build db-up migrate-up migrate-down create-user create-qr-login db-preflight db-verify docker-build docker-up docker-down
 
-APP_VERSION ?= V1.1.0_20261115
+APP_VERSION ?= V1.1.0_20261116
 TARGET_PLATFORM ?= linux/amd64
 IMAGE ?= fluffy-cupcake:$(APP_VERSION)
 
@@ -26,6 +26,9 @@ build:
 # 启动本地 MySQL；凭据从不会提交的 .env 读取。
 db-up:
 	docker compose up -d mysql
+
+db-stop:
+	docker compose stop mysql
 
 migrate-up:
 	docker compose --profile tools run --rm migrate up

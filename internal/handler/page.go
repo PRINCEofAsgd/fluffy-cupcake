@@ -90,6 +90,16 @@ func (h *PageHandler) Asset(name, contentType, cacheControl string) gin.HandlerF
 	}
 }
 
+// MoodIcon 只返回心情两组目录内的 SVG，重新验证缓存以便替换占位图。
+func (h *PageHandler) MoodIcon(c *gin.Context) {
+	group, name := c.Param("group"), c.Param("name")
+	if (group != "reasons" && group != "comforts") || path.Base(name) != name || path.Ext(name) != ".svg" {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	h.Asset("mood/"+group+"/"+name, "image/svg+xml", "no-cache")(c)
+}
+
 // SiteIcon 返回全站统一的 PNG 图标；同时供显式 favicon 链接和 /favicon.ico 回退使用。
 func (h *PageHandler) SiteIcon(c *gin.Context) {
 	c.Header("Cache-Control", "public, max-age=86400")

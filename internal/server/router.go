@@ -29,15 +29,18 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 	userRepository := repository.NewUserRepository(db)
 	qrLoginRepository := repository.NewQrLoginRepository(db)
 	companionRepository := repository.NewCompanionRepository(db)
+	moodRepository := repository.NewCompanionMoodRepository(db)
 	clickRepository := repository.NewButtonClickRepository(db)
 	sessionRepository := repository.NewAuthSessionRepository(db)
 	authService := service.NewAuthService(userRepository, qrLoginRepository, sessionRepository,
 		cfg.Auth.JWTSecret, cfg.Auth.AccessTokenTTL, cfg.Auth.SessionTTL)
 	companionService := service.NewCompanionService(companionRepository, userRepository)
+	moodService := service.NewCompanionMoodService(moodRepository)
 	clickService := service.NewButtonClickService(clickRepository, companionRepository)
 	authHandler := handler.NewAuthHandler(authService, cfg.Auth.CookieName, cfg.Auth.CookieSecure)
 	clickHandler := handler.NewButtonClickHandler(clickService)
 	companionHandler := handler.NewCompanionHandler(companionService)
+	moodHandler := handler.NewCompanionMoodHandler(moodService)
 	requireAuth := middleware.RequireAuth(cfg.Auth.CookieName, authService)
 
 	// 页面和静态资源访问按目标 URL 或目录位置命名，例如 /yanlili 和 /assets/app.css
@@ -52,6 +55,10 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 	router.GET("/assets/app.css", pageHandler.Asset("app.css", "text/css; charset=utf-8", "public, max-age=3600"))
 	router.GET("/assets/app.js", pageHandler.Asset("app.js", "text/javascript; charset=utf-8", "public, max-age=3600"))
 	router.GET("/assets/qrdecoder.js", pageHandler.Asset("qrdecoder.js", "text/javascript; charset=utf-8", "public, max-age=3600"))
+	// 统计面板的两个按钮使用用户提供的嵌入式 SVG。
+	router.GET("/assets/stats-direction.svg", pageHandler.Asset("stats-direction.svg", "image/svg+xml", "no-cache"))
+	router.GET("/assets/mood-edit.svg", pageHandler.Asset("mood-edit.svg", "image/svg+xml", "no-cache"))
+	router.GET("/assets/mood/:group/:name", pageHandler.MoodIcon)
 
 	// 业务接口以 /api 开头，按功能名称分组，同一组可包含 GET、POST 等方法
 
@@ -63,11 +70,13 @@ func NewRouter(cfg config.Config, db *sql.DB) *gin.Engine {
 	authAPI.POST("/logout", authHandler.Logout)
 	authAPI.GET("/me", requireAuth, authHandler.Me)
 
-	// 点击相关接口
+	// 想念页的点击和心情接口
 	yanliliAPI := router.Group("/api/yanlili", requireAuth)
 	yanliliAPI.POST("/clicks", clickHandler.AddClicks)
 	yanliliAPI.GET("/clicks/stats", clickHandler.Stats)
 	yanliliAPI.GET("/clicks/details", clickHandler.Details)
+	yanliliAPI.GET("/mood", moodHandler.Get)
+	yanliliAPI.PUT("/mood", moodHandler.Put)
 
 	// 绑定相关接口
 	companionAPI := router.Group("/api/companion", requireAuth)

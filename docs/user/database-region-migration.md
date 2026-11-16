@@ -53,7 +53,7 @@ make db-preflight SIDE=OLD
 - `companion_active_memberships`
 - `qr_login_mappings`
 
-版本 7 还包含 `auth_sessions` 与 `auth_refresh_tokens`。跨区搬迁保持源库原有版本，应用升级按独立的局部更新部署手册执行。
+版本 7 还包含 `auth_sessions` 与 `auth_refresh_tokens`，版本 8 再加入 `companion_moods`。跨区搬迁保持源库原有版本，应用升级按独立的局部更新部署手册执行。
 
 **成功判据**：连接成功、数据库名正确、上述表与 `schema_migrations` 均存在、`dirty=0`，行数和时间统计可读取。
 
@@ -223,7 +223,7 @@ make db-preflight SIDE=NEW
 make db-verify
 ```
 
-`db-verify` 自动比较：全部 base table/引擎/collation、每表精确行数、`schema_migrations`、全部列定义、PK、UNIQUE/普通索引、所有外键和规则，以及每个 `DATE/DATETIME/TIMESTAMP` 列在 UTC session 下的非空数、最小值、最大值。它也检查核心表，并在源库版本至少为 7 时检查会话表与刷新凭证表。
+`db-verify` 自动比较全部 base table/引擎/collation、每表精确行数、`schema_migrations`、全部列定义、PK、UNIQUE/普通索引、所有外键和规则，以及每个 `DATE/DATETIME/TIMESTAMP` 列在 UTC session 下的非空数、最小值、最大值。版本 7 起要求会话表与刷新凭证表存在，版本 8 起还要求心情快照表存在。
 
 可在两边 Database Studio 补充人工抽查（不要导出密码哈希或完整二维码文本）：
 

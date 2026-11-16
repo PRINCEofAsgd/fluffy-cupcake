@@ -25,11 +25,11 @@ Production: Singapore Sealos App → Guangzhou Sealos Managed MySQL
 make build
 ```
 
-默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.1.0_20261115`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像先以 Node 22 构建 Homepage，再进行 Go 多阶段交叉编译；无基础系统的 `scratch` 运行阶段最终仍仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
+默认产物是 `linux/amd64` 镜像 `fluffy-cupcake:V1.1.0_20261116`。若服务器是 ARM64，运行 `make build TARGET_PLATFORM=linux/arm64`。镜像先以 Node 22 构建 Homepage，再进行 Go 多阶段交叉编译；无基础系统的 `scratch` 运行阶段最终仍仅包含静态服务二进制，以非 root 用户启动，并通过程序自身完成 `/healthz` 健康检查。
 
 ## 已有环境更新
 
-局部更新部署手册按上一次已部署的版本维护。本次会话更新要求先迁移 MySQL，再一次性切换应用并更新环境变量，已有用户需重新登录。见 [从 V1.1.0_20260901 更新到 V1.1.0_20261115](incremental-deployments/from-V1.1.0_20260901.md)。
+局部更新部署手册按上一次已部署的版本维护。当前生产运行 `V1.1.0_20261116`，数据库迁移版本为 8。后续更新见 [当前部署基线](incremental-deployments/from-V1.1.0_20261116.md)，历次更新见 [局部更新部署索引](incremental-deployments/README.md)。
 
 ## 本地/独立单机 Compose
 
@@ -79,14 +79,14 @@ WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME IN (
     'schema_migrations', 'users', 'button_click_minutes',
     'companion_bindings', 'companion_active_memberships',
-    'qr_login_mappings', 'auth_sessions', 'auth_refresh_tokens'
+    'qr_login_mappings', 'auth_sessions', 'auth_refresh_tokens', 'companion_moods'
   )
 ORDER BY TABLE_NAME;
 ```
 
 必须根据检查结果继续，不能在未知状态下重复执行建表 SQL：
 
-- 空库从 `000001` 顺序执行至 `000007`，已部署库从当前干净版本的下一条 Up 开始。当前预期为 `version=7, dirty=0`；`version=6, dirty=0` 的已有库只需做 `000007`，见当前增量手册。
+- 空库从 `000001` 顺序执行至 `000008`，已部署库从当前干净版本的下一条 Up 开始。目标为 `version=8, dirty=0`，从干净版本 6 升级时依次执行 `000007` 和 `000008`，见当前增量手册。
 - 从 2 或更早版本跨过 `000003` 时，暂停应用写入。明确了旧点击的记录对象后，可创建真实用户并补旧行的 `target_user_id`，保留 `companion_binding_id = NULL`。
 - 遇到部分建表或 dirty 状态时，先核对实际表结构及迁移记录。每步执行成功后再登记对应版本。
 

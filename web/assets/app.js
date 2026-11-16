@@ -1,4 +1,4 @@
-// 页面交互：匿名和未绑定用户保留本地反馈，只有双向绑定后才按方向同步想念记录。
+// 页面交互：匿名和未绑定用户保留本地反馈，双向绑定后加载想念记录与心情。
 (() => {
   "use strict";
 
@@ -44,6 +44,18 @@
   const statsPanel = byID("stats-panel");
   const statsTitle = byID("stats-title");
   const directionSwitch = byID("direction-switch");
+  const moodGroups = byID("mood-groups");
+  const moodStatuses = byID("mood-statuses");
+  const moodReasons = byID("mood-reasons");
+  const moodComforts = byID("mood-comforts");
+  const moodEdit = byID("mood-edit");
+  const moodPanel = byID("mood-panel");
+  const moodClose = byID("mood-close");
+  const moodForm = byID("mood-form");
+  const moodEditorFields = byID("mood-editor-fields");
+  const moodEditorMessage = byID("mood-editor-message");
+  const moodClear = byID("mood-clear");
+  const moodCancel = byID("mood-cancel");
   const qrScanButton = byID("qr-scan-button");
   const qrPickButton = byID("qr-pick-button");
   const qrFileInput = byID("qr-file-input");
@@ -61,7 +73,14 @@
   let refreshGeneration = 0;
   const loginMarker = "fluffy-cupcake-signed-in";
   let currentBinding = { bound: false };
-  let statsDirection = "mine";
+  let companionStateRequestID = 0;
+  const defaultStatsDirection = "theirs";
+  let statsDirection = defaultStatsDirection;
+  let statsRequestID = 0;
+  let syncFeedbackID = 0;
+  let moodEditorRequestID = 0;
+  let moodWriteID = 0;
+  let moodDraft = null;
   let detailPage = 1;
   let detailTotalPages = 0;
   let qrScanFrame = 0;
@@ -74,6 +93,32 @@
   const qrCameraMaxEdge = 1400;
   const qrImageMaxEdge = 1800;
   const qrScanIntervalMs = 120;
+
+  // 用与 API 相同的固定标识查找文案，原因和安慰的 SVG 文件同名。
+  const moodStatusOptions = new Map([
+    ["happy", ["好开心 ^-^", "green"]], ["relaxed", ["轻松!", "blue"]],
+    ["tired", ["累累嘟 >.<", "yellow"]], ["exhausted", ["要鼠掉 ...", "brown"]],
+    ["angry", ["滚", "red"]], ["disappointed", ["失望", "black"]],
+    ["normal", ["一切正常 ~", "white"]], ["hungry", ["好饿好饿 @-@", "orange"]],
+  ]);
+  const moodReasonOptions = new Map([
+    ["you", "你"], ["family", "家人"], ["friends", "朋友"], ["work", "上班"],
+    ["health", "身体"], ["weather", "天气"], ["food", "食物"], ["bad_luck", "倒霉"], ["good_luck", "好运"], ["games", "游戏"],
+  ]);
+  const moodComfortOptions = new Map([
+    ["company", "陪陪我"], ["talk", "想跟你说"], ["see_you", "想看看你"],
+    ["milk_tea", "想喝奶茶"], ["tasty_food", "想好吃的"], ["go_out", "想出去玩"],
+  ]);
+  const moodEditorGroups = [
+    { key: "statuses", options: moodStatusOptions, list: moodStatuses, container: byID("edit-mood-statuses"), empty: "🟣 心情很神秘" },
+    { key: "reasons", options: moodReasonOptions, list: moodReasons, container: byID("edit-mood-reasons"), customKey: "reason_custom", empty: "不告诉你 😜" },
+    { key: "comforts", options: moodComfortOptions, list: moodComforts, container: byID("edit-mood-comforts"), customKey: "comfort_custom", empty: "还没想好 ~" },
+  ];
+  const moodCustomFields = [
+    { key: "reason_custom", label: "自定义原因", input: byID("mood-reason-custom"), count: byID("mood-reason-count") },
+    { key: "comfort_custom", label: "自定义安慰", input: byID("mood-comfort-custom"), count: byID("mood-comfort-count") },
+  ];
+  const moodCustomLimit = 5;
 
   if (!(loginForm instanceof HTMLFormElement) || !(companionForm instanceof HTMLFormElement) ||
       !(noteForm instanceof HTMLFormElement) || !(button instanceof HTMLButtonElement) ||
@@ -205,6 +250,8 @@
     }
     if (!authenticated) {
       currentBinding = { bound: false };
+      companionStateRequestID += 1;
+      statsRequestID += 1;
       pendingClicks = 0;
       window.clearTimeout(retryTimer);
       retryTimer = 0;
@@ -217,28 +264,259 @@
     renderBindingState();
   };
 
-  // renderBindingState 决定绑定入口、备注入口、统计区和点击宾语。
+  // renderBindingState 决定绑定入口、备注入口、统计区、心情区和点击宾语。
   const renderBindingState = () => {
     const authenticated = Boolean(currentUser);
     const bound = authenticated && Boolean(currentBinding.bound);
     if (companionButton instanceof HTMLButtonElement) companionButton.hidden = bound;
-    if (noteButton instanceof HTMLButtonElement) noteButton.hidden = !bound;
     if (statsPanel instanceof HTMLElement) statsPanel.hidden = !bound;
-    if (!bound) setPanel(notePanel, false);
-    if (authStatus instanceof HTMLElement && bound) {
+    if (!bound) {
+      setPanel(notePanel, false);
+      closeMoodEditor();
+      clearMoodLists();
+    }
+    if (authStatus instanceof HTMLElement && authenticated) {
       const displayName = currentBinding.partner_note || currentBinding.partner_username;
-      authStatus.textContent = `已与 ${displayName} 完成陪伴绑定`;
+      authStatus.textContent = bound ? `已与 ${displayName} 完成陪伴绑定` : `你好，${currentUser.username}`;
     }
   };
 
-  const loadCompanionState = async () => {
+  // loadCompanionState 同步当前绑定，新关系从对方视角读取统计和心情。
+  const loadCompanionState = async (reconcileStats = true) => {
     if (!currentUser) return;
-    currentBinding = await requestJSON("/api/companion/state");
+    const requestID = ++companionStateRequestID;
+    const binding = await requestJSON("/api/companion/state");
+    if (requestID !== companionStateRequestID) return;
+    if (binding.binding_id !== currentBinding.binding_id) {
+      statsRequestID += 1;
+      statsDirection = defaultStatsDirection;
+      closeMoodEditor();
+      setPanel(notePanel, false);
+      clearMoodLists();
+      renderStats(null, statsDirection);
+      setSyncFeedback("正在读取…");
+    }
+    currentBinding = binding;
     if (!currentBinding.bound) pendingClicks = 0;
     renderBindingState();
-    if (currentBinding.bound) await loadStats();
+    if (currentBinding.bound) await loadStats(reconcileStats);
   };
 
+  // clearMoodLists 移除上一视角的内容，避免切换加载时显示错人的状态。
+  const clearMoodLists = () => {
+    moodStatuses?.replaceChildren();
+    moodReasons?.replaceChildren();
+    moodComforts?.replaceChildren();
+  };
+
+  // moodOption 将固定选项转成共用的文案和图案，自定义文字由调用方传入该组的 custom 标识。
+  const moodOption = (group, key, value) => {
+    if (group === "statuses") {
+      const [label, tone] = value;
+      return { label, tone };
+    }
+    return { label: value, iconPath: `/assets/mood/${group}/${key}.svg` };
+  };
+
+  // appendMoodOption 使用文本节点显示文字。色灯和 SVG 作为辅助信息。
+  const appendMoodOption = (element, { label, tone, iconPath }) => {
+    const icon = document.createElement(iconPath ? "img" : "span");
+    if (iconPath) {
+      icon.className = "mood-icon";
+      icon.src = iconPath;
+      icon.alt = "";
+    } else {
+      icon.className = "mood-light";
+      icon.dataset.tone = tone;
+      icon.setAttribute("aria-hidden", "true");
+    }
+    const text = document.createElement("span");
+    text.textContent = label;
+    element.append(icon, text);
+  };
+
+  // renderMoodList 使用文本节点显示文案，让图案与色灯作为辅助信息。
+  const renderMoodList = (list, items, emptyText) => {
+    if (!list) return;
+    list.replaceChildren();
+    if (items.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "mood-empty";
+      empty.textContent = emptyText;
+      list.append(empty);
+      return;
+    }
+    for (const itemData of items) {
+      const item = document.createElement("li");
+      item.className = "mood-item";
+      appendMoodOption(item, itemData);
+      list.append(item);
+    }
+  };
+
+  // renderMood 将一份快照分配到状态、原因与安慰三栏。
+  const renderMood = (view) => {
+    for (const { key: group, options, list, customKey, empty } of moodEditorGroups) {
+      const items = [];
+      for (const key of view[group] ?? []) {
+        if (options.has(key)) items.push(moodOption(group, key, options.get(key)));
+      }
+      if (customKey && view[customKey]) items.push(moodOption(group, "custom", view[customKey]));
+      renderMoodList(list, items, empty);
+    }
+  };
+
+  // setSyncFeedback 让统计、点击同步和心情保存共用提示位，避免旧读取覆盖新反馈。
+  const setSyncFeedback = (message) => {
+    syncFeedbackID += 1;
+    if (syncStatus) syncStatus.textContent = message;
+  };
+
+  // updateMoodCustom 与服务端一样，去掉首尾 Unicode 空白后按码点计数。
+  const updateMoodCustom = ({ input, count }) => {
+    const value = input.value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");
+    const length = Array.from(value).length;
+    const valid = length <= moodCustomLimit && !/[\p{Cc}\u2028\u2029]/u.test(value);
+    count.textContent = `${length}/${moodCustomLimit} 字`;
+    input.setAttribute("aria-invalid", String(!valid));
+    return { value, valid };
+  };
+
+  // openMoodEditor 以当前本人的快照初始化三组复选框和两条自定义文字。
+  const openMoodEditor = async () => {
+    if (!currentUser || !currentBinding.bound || !moodPanel.hidden || !notePanel.hidden) return;
+    const requestID = ++moodEditorRequestID;
+    const bindingID = currentBinding.binding_id;
+    setPanel(moodPanel, true, "#mood-close");
+    moodPanel.setAttribute("aria-busy", "true");
+    setSyncFeedback("正在读取自己的心情…");
+    let view;
+    try {
+      view = await requestJSON("/api/yanlili/mood?direction=mine");
+    } catch (error) {
+      if (requestID !== moodEditorRequestID || error.sessionEnded) return;
+      if (error.status !== 409) {
+        moodPanel.removeAttribute("aria-busy");
+        setSyncFeedback("自己的心情读取失败，可关闭后重试");
+        return;
+      }
+    }
+    if (requestID !== moodEditorRequestID) return;
+    if (view?.binding_id !== bindingID) {
+      closeMoodEditor();
+      setSyncFeedback("当前陪伴绑定已变更");
+      await loadCompanionState(false).catch(() => {});
+      return;
+    }
+    moodDraft = view;
+    for (const { key: group, options, container } of moodEditorGroups) {
+      container.replaceChildren();
+      for (const [key, value] of options) {
+        const label = document.createElement("label");
+        label.className = "mood-choice";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.name = group;
+        input.value = key;
+        input.checked = view[group].includes(key);
+        label.append(input);
+        const content = document.createElement("span");
+        content.className = "mood-item";
+        appendMoodOption(content, moodOption(group, key, value));
+        label.append(content);
+        container.append(label);
+      }
+    }
+    for (const field of moodCustomFields) {
+      field.input.value = view[field.key];
+      updateMoodCustom(field);
+    }
+    if (syncStatus.textContent === "正在读取自己的心情…") setSyncFeedback("已同步");
+    moodEditorMessage.textContent = "";
+    moodPanel.removeAttribute("aria-busy");
+    moodForm.hidden = false;
+    if (!moodPanel.hidden) moodForm.querySelector('input[type="checkbox"]')?.focus();
+  };
+
+  // closeMoodEditor 释放草稿和提交锁，登录状态或绑定发生变化时也调用。
+  const closeMoodEditor = () => {
+    moodEditorRequestID += 1;
+    moodDraft = null;
+    if (!moodForm) return;
+    setPanel(moodPanel, false);
+    moodPanel.removeAttribute("aria-busy");
+    moodForm.hidden = true;
+    moodEditorFields.disabled = false;
+    moodClose.disabled = false;
+    noteButton.disabled = false;
+    if (syncStatus.textContent === "正在读取自己的心情…") setSyncFeedback("已同步");
+    for (const { container } of moodEditorGroups) container.replaceChildren();
+    moodForm.reset();
+  };
+
+  // clearMoodDraft 只清空表单，提交后才替换已保存的快照。
+  const clearMoodDraft = () => {
+    for (const input of moodForm.querySelectorAll('input[type="checkbox"]')) input.checked = false;
+    for (const field of moodCustomFields) {
+      field.input.value = "";
+      updateMoodCustom(field);
+    }
+    moodEditorMessage.textContent = "";
+  };
+
+  // saveMood 提交完整快照，忽略已失效草稿的响应，并在绑定冲突时重查当前关系。
+  const saveMood = async (event) => {
+    event.preventDefault();
+    const draft = moodDraft;
+    if (!draft || draft.binding_id !== currentBinding.binding_id || moodEditorFields.disabled) return;
+    const data = new FormData(moodForm);
+    const payload = { binding_id: draft.binding_id };
+    for (const { key } of moodEditorGroups) payload[key] = data.getAll(key);
+    for (const field of moodCustomFields) {
+      const { value, valid } = updateMoodCustom(field);
+      if (!valid) {
+        moodEditorMessage.textContent = `${field.label}须为单行，最多 ${moodCustomLimit} 个字`;
+        field.input.focus();
+        return;
+      }
+      payload[field.key] = value;
+    }
+    moodEditorFields.disabled = true;
+    moodClose.disabled = true;
+    noteButton.disabled = true;
+    moodEditorMessage.textContent = "";
+    setSyncFeedback("正在保存心情…");
+    try {
+      const view = await requestJSON("/api/yanlili/mood", { method: "PUT", body: JSON.stringify(payload) });
+      if (moodDraft !== draft) return;
+      moodWriteID += 1;
+      if (statsDirection === "mine") renderMood(view);
+      closeMoodEditor();
+      setSyncFeedback("心情已保存");
+      moodEdit.focus();
+    } catch (error) {
+      if (moodDraft !== draft || error.sessionEnded) return;
+      if (error.status === 409) {
+        closeMoodEditor();
+        clearMoodLists();
+        setSyncFeedback(error.message);
+        moodEdit.focus();
+        await loadCompanionState(false).catch(() => {});
+      } else {
+        setSyncFeedback(error.status === 400 || error.safeToRetry
+          ? error.message : "心情保存结果未确认，草稿已保留");
+        syncStatus.focus();
+      }
+    } finally {
+      if (moodDraft === draft) {
+        moodEditorFields.disabled = false;
+        moodClose.disabled = false;
+        noteButton.disabled = false;
+      }
+    }
+  };
+
+  // renderList 渲染一组统计明细，空列表显示占位提示。
   const renderList = (element, items, formatter) => {
     if (!(element instanceof HTMLElement)) return;
     element.replaceChildren();
@@ -255,25 +533,49 @@
     }
   };
 
-  // loadStats 的两个列表已经由数据库分别倒序限制为最新 8 条。
-  const loadStats = async () => {
+  // renderStats 一起更新方向标题、总数及两个由数据库倒序限制为 8 条的列表。
+  const renderStats = (stats, direction) => {
+    if (statsTitle instanceof HTMLElement) statsTitle.textContent = direction === "mine" ? "我想ta" : "ta想我";
+    directionSwitch?.setAttribute("aria-label", direction === "mine" ? "切换到对方" : "切换到自己");
+    if (totalCount instanceof HTMLElement) totalCount.textContent = String(stats?.total_count ?? "—");
+    renderList(dailyCounts, stats?.daily_counts ?? [], (item) => `${item.date}：${item.count} 次`);
+    renderList(clickMinutes, stats?.click_minutes ?? [], (item) => {
+      const localTime = new Date(item.time).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+      return `${localTime}：${item.count} 次`;
+    });
+  };
+
+  // loadStats 并行读取同一视角的心情和统计，只允许最新请求更新面板。
+  const loadStats = async (reconcileBinding = true) => {
     if (!currentUser || !currentBinding.bound) return;
-    try {
-      const utcOffsetMinutes = -new Date().getTimezoneOffset();
-      const stats = await requestJSON(`/api/yanlili/clicks/stats?direction=${statsDirection}&utc_offset_minutes=${utcOffsetMinutes}`);
-      if (statsTitle instanceof HTMLElement) statsTitle.textContent = statsDirection === "mine" ? "我想ta" : "ta想我";
-      if (totalCount instanceof HTMLElement) totalCount.textContent = String(stats.total_count ?? 0);
-      renderList(dailyCounts, stats.daily_counts ?? [], (item) => `${item.date}：${item.count} 次`);
-      renderList(clickMinutes, stats.click_minutes ?? [], (item) => {
-        const localTime = new Date(item.time).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-        return `${localTime}：${item.count} 次`;
-      });
-      if (syncStatus instanceof HTMLElement) syncStatus.textContent = "已同步";
-    } catch (error) {
-      if (error.status === 409) await loadCompanionState().catch(() => {});
-      if (!error.sessionEnded && syncStatus instanceof HTMLElement) {
-        syncStatus.textContent = error.safeToRetry ? error.message : "统计读取失败";
-      }
+    const requestID = ++statsRequestID;
+    const direction = statsDirection;
+    const bindingID = currentBinding.binding_id;
+    const feedbackID = syncFeedbackID;
+    const writeID = moodWriteID;
+    const utcOffsetMinutes = -new Date().getTimezoneOffset();
+    moodGroups?.setAttribute("aria-busy", "true");
+    const [stats, mood] = await Promise.allSettled([
+      requestJSON(`/api/yanlili/clicks/stats?direction=${direction}&utc_offset_minutes=${utcOffsetMinutes}`),
+      requestJSON(`/api/yanlili/mood?direction=${direction}`),
+    ]);
+    if (requestID !== statsRequestID) return;
+    const bindingChanged = stats.reason?.status === 409 || mood.reason?.status === 409 ||
+      (mood.status === "fulfilled" && mood.value.binding_id !== bindingID);
+    if (bindingChanged && reconcileBinding) {
+      await loadCompanionState(false).catch(() => {});
+      if (requestID !== statsRequestID) return;
+    }
+    moodGroups?.setAttribute("aria-busy", "false");
+    const statsReady = !bindingChanged && stats.status === "fulfilled";
+    const moodReady = !bindingChanged && mood.status === "fulfilled";
+    if (statsReady) renderStats(stats.value, direction);
+    // 快照读请求发出后，若本人心情已成功写入，保留较新的保存结果。
+    if (moodReady && (direction === "theirs" || writeID === moodWriteID)) renderMood(mood.value);
+    if (feedbackID === syncFeedbackID && !requestInFlight && pendingClicks === 0) {
+      const failed = [statsReady ? "" : "统计", moodReady ? "" : "心情"].filter(Boolean);
+      const retryableError = [stats.reason, mood.reason].find((error) => error?.safeToRetry);
+      setSyncFeedback(retryableError?.message || (failed.length ? `${failed.join("与")}读取失败` : "已同步"));
     }
   };
 
@@ -287,10 +589,10 @@
     const batch = Math.min(pendingClicks, 100);
     pendingClicks -= batch;
     requestInFlight = true;
-    if (syncStatus instanceof HTMLElement) syncStatus.textContent = `正在同步 ${batch} 次…`;
+    setSyncFeedback(`正在同步 ${batch} 次…`);
     try {
       await requestJSON("/api/yanlili/clicks", { method: "POST", body: JSON.stringify({ count: batch }), keepalive });
-      if (syncStatus instanceof HTMLElement) syncStatus.textContent = pendingClicks > 0 ? `待同步 ${pendingClicks} 次` : "已同步";
+      setSyncFeedback(pendingClicks > 0 ? `待同步 ${pendingClicks} 次` : "已同步");
       void loadStats();
     } catch (error) {
       if (error.sessionEnded) return;
@@ -299,12 +601,12 @@
         await loadCompanionState().catch(() => {});
       } else if (error.safeToRetry && currentUser && currentBinding.bound) {
         pendingClicks += batch;
-        if (syncStatus instanceof HTMLElement) syncStatus.textContent = `登录校验暂未恢复，保留 ${pendingClicks} 次待重试`;
+        setSyncFeedback(`登录校验暂未恢复，保留 ${pendingClicks} 次待重试`);
         window.clearTimeout(retryTimer);
         retryTimer = window.setTimeout(() => { retryTimer = 0; void flushClicks(); }, 2000);
-      } else if (syncStatus instanceof HTMLElement) {
+      } else {
         // 写请求发出后连接中断时可能已经写入，自动重发会重复计数。
-        syncStatus.textContent = "这批点击的同步结果未知，请查看记录";
+        setSyncFeedback("这批点击的同步结果未知，请查看记录");
       }
     } finally {
       requestInFlight = false;
@@ -742,7 +1044,11 @@
   closeLoginButton?.addEventListener("click", () => { stopQrScan(); setLoginPanel(false); });
   closeCompanionButton?.addEventListener("click", () => setPanel(companionPanel, false));
   closeInboxButton?.addEventListener("click", () => setPanel(inboxPanel, false));
-  closeNoteButton?.addEventListener("click", () => setPanel(notePanel, false));
+  // 备注入口位于心情面板，关闭备注时回到原表单和草稿。
+  closeNoteButton?.addEventListener("click", () => {
+    setPanel(notePanel, false);
+    if (currentBinding.bound) setPanel(moodPanel, true, "#note-button");
+  });
   closeDetailsButton?.addEventListener("click", () => setPanel(detailsPanel, false));
 
   companionButton?.addEventListener("click", () => {
@@ -762,15 +1068,36 @@
     });
   });
   noteButton?.addEventListener("click", () => {
+    if (!currentBinding.bound) return;
     if (partnerNote instanceof HTMLInputElement) partnerNote.value = currentBinding.partner_note || "";
+    if (noteMessage) noteMessage.textContent = "";
+    setPanel(moodPanel, false);
     setPanel(notePanel, true, "#partner-note");
   });
   detailsButton?.addEventListener("click", () => { detailPage = 1; setPanel(detailsPanel, true); void loadDetails(); });
 
+  // 同时切换心情和统计视角，点击按钮仍写入自己的想念次数。
   directionSwitch?.addEventListener("click", () => {
     statsDirection = statsDirection === "mine" ? "theirs" : "mine";
+    clearMoodLists();
+    renderStats(null, statsDirection);
+    if (!requestInFlight && pendingClicks === 0) setSyncFeedback("正在读取…");
     void loadStats();
   });
+
+  // 编辑只操作本地草稿，直到表单提交才会写入数据库。
+  moodEdit?.addEventListener("click", openMoodEditor);
+  moodForm?.addEventListener("submit", saveMood);
+  moodClear?.addEventListener("click", clearMoodDraft);
+  const dismissMoodEditor = () => {
+    closeMoodEditor();
+    moodEdit.focus();
+  };
+  moodCancel?.addEventListener("click", dismissMoodEditor);
+  moodClose?.addEventListener("click", dismissMoodEditor);
+  for (const field of moodCustomFields) {
+    field.input?.addEventListener("input", () => updateMoodCustom(field));
+  }
 
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();

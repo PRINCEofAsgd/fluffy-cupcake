@@ -269,6 +269,10 @@ verify_snapshots() {
   if awk -F $'\t' '$1 >= 7 { found=1 } END { exit !found }' "$temp_dir/OLD/schema-migrations.tsv"; then
     expected_tables+=" auth_sessions auth_refresh_tokens"
   fi
+  # v8 起备份中必须包含按绑定隔离的心情快照表。
+  if awk -F $'\t' '$1 >= 8 { found=1 } END { exit !found }' "$temp_dir/OLD/schema-migrations.tsv"; then
+    expected_tables+=" companion_moods"
+  fi
   verify_failed=0
   for table in $expected_tables; do
     if ! awk -F $'\t' -v table="$table" '$1 == table { found=1 } END { exit !found }' "$temp_dir/OLD/tables.tsv"; then
@@ -290,7 +294,7 @@ verify_snapshots() {
   compare_file temporal-stats.tsv
 
   printf '\n关键业务表行数（OLD；NEW 必须完全一致）\n'
-  awk -F $'\t' '$1 == "users" || $1 == "button_click_minutes" || $1 == "companion_bindings" || $1 == "companion_active_memberships" || $1 == "qr_login_mappings" || $1 == "auth_sessions" || $1 == "auth_refresh_tokens"' "$temp_dir/OLD/row-counts.tsv"
+  awk -F $'\t' '$1 == "users" || $1 == "button_click_minutes" || $1 == "companion_bindings" || $1 == "companion_active_memberships" || $1 == "qr_login_mappings" || $1 == "auth_sessions" || $1 == "auth_refresh_tokens" || $1 == "companion_moods"' "$temp_dir/OLD/row-counts.tsv"
 
   if [[ "$verify_failed" -ne 0 ]]; then
     die 'OLD/NEW 验证失败；保持停写，不要切换 DATABASE_DSN'

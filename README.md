@@ -1,12 +1,12 @@
 # fluffy-cupcake
 
-fluffy-cupcake 是一个基于 Gin 与 MySQL 的私人轻量 Web 服务。根路径提供个人 Homepage，任何访客都可从中进入 `/yanlili` 使用 GIF 按钮和即时音效/动画；固定用户可通过收件箱完成唯一的双向“陪伴绑定”，把想念按方向和 UTC 分钟保存，并查询当前或历次绑定对象的记录。除用户名密码登录外，还支持扫描“终身卡”二维码文本免密登录。
+fluffy-cupcake 是一个基于 Gin 与 MySQL 的私人轻量 Web 服务。根路径提供个人 Homepage，任何访客都可从中进入 `/yanlili` 使用 GIF 按钮和即时音效/动画；固定用户可通过收件箱完成唯一的双向“陪伴绑定”，把想念按方向和 UTC 分钟保存，并查询当前或历次绑定对象的记录。绑定双方可在统计面板查看彼此的心情并填写自己的心情。除用户名密码登录外，还支持扫描“终身卡”二维码文本免密登录。
 
 Homepage 的视觉与交互参考 [LeoninCS/Homepage](https://github.com/LeoninCS/Homepage) 设计。
 
 ## 当前版本
 
-`V1.1.0_20261115`
+`V1.1.0_20261116`
 
 ## 快速开始
 
@@ -30,7 +30,7 @@ make test
 make build
 ```
 
-`make build` 先在 Docker 中构建 Homepage，再生成 `linux/amd64` 镜像 `fluffy-cupcake:V1.1.0_20261115`，不会在仓库中生成本机二进制。ARM64 Linux 服务器可使用 `make build TARGET_PLATFORM=linux/arm64`。
+`make build` 先在 Docker 中构建 Homepage，再生成 `linux/amd64` 镜像 `fluffy-cupcake:V1.1.0_20261116`，不会在仓库中生成本机二进制。ARM64 Linux 服务器可使用 `make build TARGET_PLATFORM=linux/arm64`。
 
 `compose.yaml` 保留给本地/独立单机开发；Sealos 生产环境由 Singapore Gin 应用通过 `DATABASE_DSN` 连接 Guangzhou Managed MySQL 的 External/Public Endpoint，不依赖 Compose 的 `mysql` service name。部署准备见 [部署指南](docs/user/deployment.md)，跨区域搬迁按 [数据库迁移 Runbook](docs/user/database-region-migration.md) 执行。
 

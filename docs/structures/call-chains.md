@@ -61,7 +61,7 @@
 
 ## 点击统计读取链路
 
-1. 页面以 `direction=mine|theirs` 和浏览器 `utc_offset_minutes` 请求受保护的 `GET /api/yanlili/clicks/stats`，⇄ 图标在“我想ta”与“ta想我”之间切换。
+1. 页面载入当前绑定或换绑后，以 `direction=theirs` 和浏览器 `utc_offset_minutes` 请求受保护的 `GET /api/yanlili/clicks/stats`，默认显示“ta想我”。⇄ 在 `theirs`（“ta想我”）和 `mine`（“我想ta”）之间切换，只有最新统计请求可以更新标题和统计。API 调用方省略 `direction` 时仍按 `mine` 查询。
 2. Service 根据当前绑定把方向解析为发起用户和目标用户；Repository 按用户对合并迁移旧行及历次绑定，查询方向总数，并分别倒序 `LIMIT 8` 返回“每日想念”和“最近想念”。每日分组在 UTC 分钟上叠加浏览器偏移，和明细本地时间使用同一日界线。
 3. “详细记录”先通过 `GET /api/companion/partners` 取得历次已接受绑定的对象，再请求 `GET /api/yanlili/clicks/details?partner_id=&page=`。
 4. 详细查询按用户对读取两个方向，把不同绑定实例和只有对象 ID 的迁移旧数据按分钟合并后 `UNION ALL`，固定 `LIMIT 20 OFFSET ...` 返回分页结果；响应不返回绑定实例 ID。
@@ -76,6 +76,15 @@
 5. 资源全部解码后加载门渐隐，React 展示 Loki Yin 的头像、简介、身份、技术方向、两段工作经历、四个项目经历、四项爱好及公开联系方式；主机用原作者的单一背景层加载重新取景的抹茶与蛋糕宽幅照片，左侧导航用半透明暗色覆盖形成副屏，10 枚自托管技术栈 SVG 以错落层次漂浮。
 6. 经历组件直接复用原作者 MiniMax 品牌控制台与 Sealos 流程控制台，并在桌面端保持左右对称；项目标签按 Fluffy Cupcake、Reactor Web、My Dock、Card Game 排列并直接显示项目名，网易云音乐入口直达公开艺人主页。
 7. Homepage 不调用新增 API 或数据库；但它与 `/yanlili` 仍由同一 Gin 进程提供，因此继承应用启动时的 MySQL 可用性要求。
+
+## 陪伴心情接口调用链
+
+1. `GET /api/yanlili/mood` 和 `PUT /api/yanlili/mood` 共用 `RequireAuth`，请求身份来自已校验的访问 Cookie，响应禁止缓存。
+2. `CompanionMoodHandler.Get` 将 `direction` 交给 `CompanionMoodService.Get`，默认为 `theirs`。`CompanionMoodRepository.GetCurrent` 用一次查询从活跃占位解析本人或对方，以绑定 ID 和填写者 ID 匹配快照。没有快照返回空数组和空串，无活跃绑定返回 `409 MOOD_NOT_BOUND`。
+3. `CompanionMoodHandler.Put` 读取完整快照，Service 校验三组枚举及两条自定义文字。Repository 在事务中锁定客户端所见的绑定信件并检查登录用户的当前占位，再按绑定与登录用户覆盖存储。绑定结束或变更时返回 `409 MOOD_BINDING_CHANGED`，保存成功返回归一化后快照。
+4. 页面确认活跃绑定后，`loadStats` 并行读取同一方向的心情和想念统计。默认使用 `direction=theirs`，方向按钮同时切换两组数据，只有最新一轮请求可以更新面板。遇到 `409` 或心情响应的绑定 ID 不符时重新读取一次绑定；解绑后隐藏统计面板，换绑后从对方视角读取。
+5. `renderMood` 按固定选项标识渲染色灯与文字。原因及安慰选项用同名标识请求 `/assets/mood/:group/:name`，自定义文字使用本组的 `custom.svg`。`PageHandler.MoodIcon` 从 Go 嵌入资源返回 SVG。
+6. 统计区的铅笔按钮打开编辑面板。`openMoodEditor` 独立读取本人快照并生成草稿，保留统计方向。`saveMood` 校验自定义文字后一次性 `PUT` 三组数据，当前是本人视角时同步更新展示。保存使用统计区的 `sync-status`，提交期间锁住表单，失败保留草稿，绑定冲突时关闭编辑并重查绑定。编辑面板底部可打开备注面板，关闭备注后回到原草稿。
 
 ## `/yanlili` 页面调用链
 

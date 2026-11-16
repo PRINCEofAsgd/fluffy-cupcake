@@ -161,9 +161,26 @@ func TestYanliliPage(t *testing.T) {
 	if !strings.Contains(response.Body.String(), `id="companion-button"`) {
 		t.Fatal("页面缺少未登录可见的陪伴绑定入口")
 	}
-	for _, expected := range []string{"我想ta", "每日想念", "最近想念", `id="direction-switch"`, `id="details-button"`} {
+	for _, expected := range []string{`<h2 id="stats-title">ta想我</h2>`, "每日想念", "最近想念", `id="direction-switch"`, `id="details-button"`} {
 		if !strings.Contains(response.Body.String(), expected) {
 			t.Fatalf("页面缺少新想念记录交互 %q", expected)
+		}
+	}
+	// 心情位于统计面板顶部，两个图标按钮相邻，分类标题留在编辑表单中。
+	body := response.Body.String()
+	statsStart := strings.Index(body, `<aside id="stats-panel"`)
+	moodStart := strings.Index(body, `id="mood-groups"`)
+	directionStart := strings.Index(body, `id="direction-switch"`)
+	editStart := strings.Index(body, `id="mood-edit"`)
+	if statsStart < 0 || moodStart <= statsStart || directionStart <= moodStart || editStart <= directionStart ||
+		strings.Contains(body, `id="mood-direction"`) || strings.Contains(body, `id="mood-message"`) {
+		t.Fatal("心情区、共享操作或提示位的位置不正确")
+	}
+	for _, part := range []string{`<legend>心情状态</legend>`, `<legend>影响原因</legend>`, `<legend>想要安慰</legend>`,
+		`aria-controls="mood-panel"`, `aria-controls="note-panel">修改备注</button>`,
+	} {
+		if !strings.Contains(body, part) {
+			t.Fatalf("心情区缺少 %s", part)
 		}
 	}
 	if strings.Contains(response.Body.String(), `id="app-panel" class="app-panel" aria-label="想念按钮与陪伴绑定" hidden`) {
@@ -178,6 +195,33 @@ func TestYanliliPage(t *testing.T) {
 	}
 	if !strings.Contains(contentSecurityPolicy, "img-src 'self' blob:") {
 		t.Fatal("页面 CSP 必须允许旧浏览器通过 blob URL 读取用户选择的二维码图片")
+	}
+}
+
+// TestMoodIcons 验证心情 SVG 路由类型与缓存，并拒绝目录以外和不存在的文件。
+func TestMoodIcons(t *testing.T) {
+	router := NewRouter(config.Config{Mode: "test"}, nil)
+	for _, url := range []string{
+		"/assets/stats-direction.svg", "/assets/mood-edit.svg",
+		"/assets/mood/reasons/work.svg", "/assets/mood/comforts/milk_tea.svg",
+		"/assets/mood/reasons/good_luck.svg",
+		"/assets/mood/reasons/custom.svg", "/assets/mood/comforts/custom.svg",
+	} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, url, nil))
+		if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/svg+xml" ||
+			response.Header().Get("Cache-Control") != "no-cache" || !strings.Contains(response.Body.String(), "<svg") {
+			t.Fatalf("%s 未返回可重新验证缓存的 SVG，状态码 %d", url, response.Code)
+		}
+	}
+	for _, url := range []string{
+		"/assets/mood/reasons/missing.svg", "/assets/mood/other/work.svg", "/assets/mood/reasons/app.js",
+	} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, url, nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("%s 状态码 = %d，期望 404", url, response.Code)
+		}
 	}
 }
 

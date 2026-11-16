@@ -10,7 +10,7 @@
 
 ## `build.sh`
 
-通过 Dockerfile 先构建 Homepage，再构建 Linux 容器镜像，不生成本机二进制。默认平台为 `linux/amd64`，默认镜像为 `fluffy-cupcake:V1.1.0_20261115`。
+通过 Dockerfile 先构建 Homepage，再构建 Linux 容器镜像，不生成本机二进制。默认平台为 `linux/amd64`，默认镜像为 `fluffy-cupcake:V1.1.0_20261116`。
 
 ```bash
 ./scripts/build.sh

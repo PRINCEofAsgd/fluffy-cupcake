@@ -23,7 +23,6 @@
         <div class="auth-actions">
           <button id="companion-button" type="button">陪伴绑定</button>
           <button id="inbox-button" class="quiet-button" type="button" hidden>收件箱</button>
-          <button id="note-button" class="quiet-button" type="button" hidden>修改备注</button>
           <button id="details-button" class="quiet-button" type="button" hidden>详细记录</button>
           <button id="login-button" type="button" aria-expanded="false" aria-controls="login-panel">登录</button>
           <button id="logout-button" type="button" hidden>退出</button>
@@ -75,8 +74,7 @@
           <button id="close-note-button" class="quiet-button" type="button" aria-label="关闭备注表单">关闭</button>
         </div>
         <form id="note-form" class="login-form">
-          <label for="partner-note">绑定对象备注（留空则显示用户名）</label>
-          <input id="partner-note" name="note" type="text" maxlength="64">
+          <input id="partner-note" aria-label="绑定对象备注" name="note" type="text" maxlength="64">
           <button type="submit">保存备注</button>
         </form>
         <p id="note-message" class="form-message" role="alert"></p>
@@ -91,6 +89,46 @@
         <p id="inbox-message" class="form-message" role="alert"></p>
       </section>
 
+      <!-- 心情编辑和备注、收件箱使用相同的展开面板。 -->
+      <section id="mood-panel" class="login-panel mood-editor-panel" aria-labelledby="mood-title" hidden>
+        <div class="login-heading">
+          <h2 id="mood-title">修改心情</h2>
+          <button id="mood-close" class="quiet-button" type="button" aria-label="关闭心情表单">关闭</button>
+        </div>
+        <form id="mood-form" class="mood-form" aria-label="编辑我的心情" hidden>
+          <fieldset id="mood-editor-fields" class="mood-editor-fields">
+            <legend class="visually-hidden">编辑我的心情</legend>
+            <div class="mood-editor-options">
+              <fieldset>
+                <legend>心情状态</legend>
+                <div id="edit-mood-statuses" class="mood-choices"></div>
+              </fieldset>
+              <fieldset>
+                <legend>影响原因</legend>
+                <div id="edit-mood-reasons" class="mood-choices"></div>
+                <label class="mood-custom-label" for="mood-reason-custom">自定义原因</label>
+                <input id="mood-reason-custom" type="text" aria-describedby="mood-reason-count">
+                <span id="mood-reason-count" class="mood-custom-count">0/5 字</span>
+              </fieldset>
+              <fieldset>
+                <legend>想要安慰</legend>
+                <div id="edit-mood-comforts" class="mood-choices"></div>
+                <label class="mood-custom-label" for="mood-comfort-custom">自定义安慰</label>
+                <input id="mood-comfort-custom" type="text" aria-describedby="mood-comfort-count">
+                <span id="mood-comfort-count" class="mood-custom-count">0/5 字</span>
+              </fieldset>
+            </div>
+            <p id="mood-editor-message" class="mood-editor-message" role="status"></p>
+            <div class="mood-editor-actions">
+              <button id="mood-clear" class="mood-control" type="button">清空选项</button>
+              <button id="mood-cancel" class="mood-control" type="button">取消</button>
+              <button class="mood-save" type="submit">保存</button>
+            </div>
+          </fieldset>
+        </form>
+        <button id="note-button" class="mood-control mood-note-button" type="button" aria-controls="note-panel">修改备注</button>
+      </section>
+
       <section class="button-stage" aria-labelledby="page-title">
         <h1 id="page-title" class="visually-hidden">想念按钮</h1>
         <p class="hint" aria-hidden="true">点一下试试</p>
@@ -100,13 +138,24 @@
         </button>
         <p id="live-message" class="visually-hidden" aria-live="polite"></p>
       </section>
+      <!-- 心情与点击统计使用同一视角和同步提示。 -->
       <aside id="stats-panel" class="stats-panel" aria-labelledby="stats-title" hidden>
+        <div id="mood-groups" class="mood-groups" role="group" aria-label="陪伴心情">
+          <ul id="mood-statuses" class="mood-list" aria-label="心情状态" role="list"></ul>
+          <ul id="mood-reasons" class="mood-list" aria-label="影响原因" role="list"></ul>
+          <ul id="mood-comforts" class="mood-list" aria-label="想要安慰" role="list"></ul>
+        </div>
         <div class="stats-heading">
           <div class="direction-heading">
-            <h2 id="stats-title">我想ta</h2>
-            <button id="direction-switch" class="icon-button" type="button" aria-label="切换想念记录方向">⇄</button>
+            <h2 id="stats-title">ta想我</h2>
+            <button id="direction-switch" class="stats-action" type="button" aria-label="切换到自己" aria-controls="stats-panel">
+              <img src="/assets/stats-direction.svg?v={{.Version}}" alt="" width="22" height="22">
+            </button>
+            <button id="mood-edit" class="stats-action" type="button" aria-label="修改自己的心情" aria-controls="mood-panel">
+              <img src="/assets/mood-edit.svg?v={{.Version}}" alt="" width="22" height="22">
+            </button>
           </div>
-          <span id="sync-status" role="status">已同步</span>
+          <span id="sync-status" role="status" tabindex="-1">已同步</span>
         </div>
         <p class="total-stat">总点击 <strong id="total-count">0</strong> 次</p>
         <div class="stats-grid">

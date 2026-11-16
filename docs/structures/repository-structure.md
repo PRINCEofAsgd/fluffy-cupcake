@@ -36,8 +36,8 @@ fluffy-cupcake/
 │   ├── healthcheck/            # 无外部依赖的容器健康检查客户端
 │   ├── handler/                # 负责处理 HTTP 请求与响应
 │   ├── middleware/             # 中间件，即多个接口共用链路解耦
-│   ├── model/                  # 用户、登录会话、陪伴绑定与方向性点击数据模型
-│   ├── repository/             # 用户/会话/绑定信件/当前绑定/分钟桶/二维码映射显式 SQL
+│   ├── model/                  # 业务数据模型
+│   ├── repository/             # 显式 SQL 读写
 │   ├── server/                 # Gin 路由和中间件组装
 │   ├── service/                # 负责执行 handler 对应接口的业务规则
 │   └── version/                # 当前应用版本常量
@@ -81,6 +81,11 @@ fluffy-cupcake/
 - `cmd/create-qr-login/main.go`：校验真实用户后写入二维码永久文本到用户的映射，可从命令行或标准输入读取文本。
 
 ### internal/
+- `internal/model/companion_mood.go`：绑定内的三组心情选项及 API 快照模型。
+- `internal/repository/companion_mood.go`：按活跃关系解析心情视角，并把本人保存与解绑按同一信件锁串行化。
+- `internal/service/companion_mood.go`：校验固定选项、自定义文字和读写视角；`internal/service/companion_mood_test.go` 覆盖输入与方向校验。
+- `internal/handler/companion_mood.go`：处理心情 API 的读写、请求体校验和响应。
+- `internal/server/companion_mood_mysql_test.go`：通过真实 MySQL 和 HTTP 验证心情权限、保存、清空与解绑重绑。
 - `internal/config/config.go`：读取应用、连接池、JWT 和 Cookie 环境变量，拒绝不完整敏感配置。
 - `internal/database/mysql.go`：创建一次全局 `database/sql` 池，Ping、强制 UTC，并为未配置的连接/读/写网络超时补 5 秒默认值。
 - `internal/server/router.go`：初始化 Gin，划分公开认证接口和受保护业务接口。
@@ -113,10 +118,12 @@ fluffy-cupcake/
 - `web/homepage/dist/`：Vite 生成的根路径入口及 `homepage/` 资源目录，由 Go `embed.FS` 一并打包。
 - `web/homepage/scripts/build-homepage.cjs`：清理并构建 Homepage，校验入口产物存在。
 - `web/homepage/package.json / package-lock.json`：Homepage Node 依赖、构建命令和锁定版本。
-- `web/templates/yanlili.html`：想念页面语义结构与可访问性标记。
-- `web/assets/app.css`：响应式布局、按钮反馈、文字上浮渐隐动画。
-- `web/assets/app.js`：始终可用的点击动画、可并发 Web Audio 合成音效、独立登录状态、持续摄像头取帧、相册图片受控缩放与多区域二维码识别，按需恢复登录、同页与跨页刷新协调，以及仅登录时的数据同步管理。
+- `web/templates/yanlili.html`：想念页面语义结构、心情三栏和编辑表单。
+- `web/assets/app.css`：响应式布局、心情三栏与表单、色灯、按钮反馈及文字上浮动画。
+- `web/assets/app.js`：管理点击动画、Web Audio 音效、扫码登录与会话恢复、绑定关系、想念记录以及心情视角和本人编辑草稿。
 - `web/assets/qrdecoder.js`：内置的 jsQR 二维码解码库，页面扫码登录使用，不依赖外部 CDN。
+- `web/assets/mood/reasons/`、`web/assets/mood/comforts/`：影响原因和想要安慰的 SVG 资源，文件名对应固定选项标识，每组的 `custom.svg` 为自定义文字的立方体图标。由 `web/embed.go` 嵌入并通过 `/assets/mood/:group/:name` 提供。
+- `web/assets/stats-direction.svg`、`web/assets/mood-edit.svg`：统计区的方向和编辑图案，统一可见尺寸，由 `/assets/` 下的同名地址提供。
 - `web/assets/miss-pop.mp3`：保留的历史提示音素材，当前页面不加载。
 
 ### migrations/
@@ -127,6 +134,7 @@ fluffy-cupcake/
 - `migrations/000005_add_unbind_request_states.*.sql`：增加可反馈、可重复申请的解绑子状态和处理字段。
 - `migrations/000006_create_qr_login_mappings.*.sql`：创建/删除二维码永久文本到真实用户的一一映射表。
 - `migrations/000007_create_auth_sessions.*.sql`：创建/删除固定截止的会话和刷新凭证哈希表。
+- `migrations/000008_create_companion_moods.*.sql`：创建/删除按关系和填写者保存的心情快照表。
 
 ### deploy/
 - `deploy/caddy/Caddyfile`：`fluffy-cupcake.cn` HTTPS 和反向代理策略。
@@ -135,7 +143,8 @@ fluffy-cupcake/
 - `scripts/db-migration/verify.sh`：隐藏读取 OLD/NEW 密码，以只读查询比较表、行数、Migration、列、索引、外键和 UTC 时间边界。
 
 ### docs/
-- `docs/user/incremental-deployments/from-V1.1.0_20260901.md`：会话功能上线的迁移、切换、验证与回退步骤。
+- `docs/user/incremental-deployments/from-V1.1.0_20260901.md`：会话和心情功能已完成上线的迁移、切换、验收与回退记录。
+- `docs/user/incremental-deployments/from-V1.1.0_20261116.md`：当前生产部署基线及下一次局部更新手册。
 - `docs/user/database-region-migration.md`：跨区域全库 dump/restore、生产切换、冒烟、观察、回滚和旧库下线操作手册。
 - `docs/record/project-context.md`：记录当前阶段状态，并指向已经收口的阶段归档。
 - `docs/record/context-archives/initial-release-stage.md`：保存初版上线阶段 Step 1–5 的目标、实现、验证和后续事项。

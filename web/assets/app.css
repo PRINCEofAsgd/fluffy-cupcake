@@ -197,6 +197,191 @@ button {
   place-items: center;
 }
 
+/* 心情编辑保留现有表单面板样式，桌面为三栏留出宽度。 */
+.mood-editor-panel {
+  width: min(100%, 700px);
+  padding: clamp(16px, 4vw, 28px);
+}
+
+.mood-editor-panel .login-heading {
+  margin-bottom: 16px;
+}
+
+.mood-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mood-control {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.mood-control:disabled,
+.mood-save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.mood-groups {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) repeat(2, minmax(0, 1fr));
+  gap: clamp(6px, 2vw, 22px);
+  margin-bottom: 8px;
+  color: #70483e;
+  font-size: clamp(0.8125rem, 2vw, 0.9375rem);
+  line-height: 1.45;
+}
+
+.mood-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  min-height: 1.45em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mood-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.mood-icon,
+.mood-light {
+  flex: none;
+  width: 0.9em;
+  height: 0.9em;
+  align-self: flex-start;
+  margin-top: 0.25em;
+}
+
+.mood-light {
+  border: 1px solid rgb(0 0 0 / 28%);
+  border-radius: 50%;
+  background: var(--mood-light-color);
+}
+
+.mood-light[data-tone="green"] { --mood-light-color: #34a853; }
+.mood-light[data-tone="blue"] { --mood-light-color: #357bdd; }
+.mood-light[data-tone="yellow"] { --mood-light-color: #eebc26; }
+.mood-light[data-tone="brown"] { --mood-light-color: #a46b49; }
+.mood-light[data-tone="red"] { --mood-light-color: #e25651; }
+.mood-light[data-tone="black"] { --mood-light-color: #27252a; }
+.mood-light[data-tone="white"] { --mood-light-color: #fff; }
+.mood-light[data-tone="orange"] { --mood-light-color: #ee8b27; }
+
+.mood-empty {
+  color: #805e52;
+  overflow-wrap: anywhere;
+}
+
+/* 编辑沿用三组分类，小屏改为纵向排列以留出触控空间。 */
+.mood-editor-fields,
+.mood-editor-options fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mood-editor-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.mood-editor-options legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+.mood-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+
+.mood-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.mood-choice input {
+  margin: 0;
+  accent-color: #865044;
+}
+
+.mood-custom-label {
+  display: block;
+  margin: 8px 0 4px;
+  font-size: 0.875rem;
+}
+
+.mood-form input[type="text"] {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid #a87968;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: inherit;
+  font: inherit;
+}
+
+.mood-form input[aria-invalid="true"] {
+  border-color: #a24842;
+}
+
+.mood-custom-count,
+.mood-editor-message {
+  font-size: 0.875rem;
+}
+
+.mood-editor-message {
+  margin: 10px 0 2px;
+  color: #8a3e3a;
+}
+
+.mood-editor-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.mood-note-button {
+  display: block;
+  margin-top: 8px;
+  padding-inline: 0;
+}
+
+.mood-save {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #865044;
+  color: #fff;
+  cursor: pointer;
+}
+
 .button-stage {
   position: relative;
   display: grid;
@@ -226,8 +411,43 @@ button {
   margin: 0;
 }
 
+#stats-panel .stats-heading {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+}
+
+.direction-heading {
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
 .direction-heading h2 {
-  min-width: 4.2em;
+  margin-inline-end: 6px;
+  white-space: nowrap;
+}
+
+/* 切换与编辑的图案等大，透明按钮各自保留 44 像素触控区。 */
+.stats-action {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.stats-action img {
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
+#sync-status {
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .stats-heading span {
@@ -438,6 +658,11 @@ button {
 }
 
 @media (max-width: 620px) {
+  /* 与主面板的 94vw 宽度配合，手机上为三栏和操作区保留均等边距。 */
+  .page-shell {
+    padding-inline: 3vw;
+  }
+
   .stats-grid {
     grid-template-columns: 1fr;
   }
@@ -445,6 +670,10 @@ button {
   .user-bar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .mood-editor-options {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

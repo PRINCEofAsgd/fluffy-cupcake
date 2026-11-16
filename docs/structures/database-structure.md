@@ -50,6 +50,19 @@
 
 `UNIQUE(binding_id, user_id)` 同时服务按绑定释放双方占位的查询；三个 ID 均有外键保护。
 
+## `companion_moods`
+
+每段关系内每个填写者一份最新心情快照，整份替换，不生成修改历史。读取仅关联当前绑定占位。解绑后原快照留在旧关系中，从应用接口不可访问。同一对用户重新绑定时使用新关系 ID，从空快照开始。
+
+| 字段 | 类型 | NULL | 说明 |
+| --- | --- | --- | --- |
+| `binding_id` | `BIGINT UNSIGNED` | 否 | 当前快照所属的绑定信件 |
+| `author_user_id` | `BIGINT UNSIGNED` | 否 | 填写者，由登录身份确定 |
+| `content` | `JSON` | 否 | 对象，包含固定选项数组 `statuses`、`reasons`、`comforts` 以及 `reason_custom`、`comfort_custom` 字符串 |
+| `created_at` / `updated_at` | `TIMESTAMP(6)` | 否 | 创建与内容变更的 UTC 时间 |
+
+`PRIMARY KEY(binding_id, author_user_id)` 同时约束快照唯一性并支持当前关系内的定点读取。`idx_companion_moods_author(author_user_id)` 支持填写者外键。两个 ID 分别引用 `companion_bindings(id)` 和 `users(id)`，均限制删除。`CHECK` 要求 `content` 为 JSON 对象，固定选项及每条自定义文字的长度由 Service 校验。
+
 ## `button_click_minutes`
 
 保留原表并升级为“用户 → 绑定对象”的方向性 UTC 分钟桶，不为每次物理点击插行。
@@ -122,6 +135,7 @@
 - `000005_add_unbind_request_states.up/down.sql`：增加解绑子状态和处理人/时间，升级时回填已有待处理、双方接受或长期未登录结果；Down 会先清除已取消/已拒绝的旧申请人，避免旧程序误判为待处理。
 - `000006_create_qr_login_mappings.up/down.sql`：创建/删除二维码文本到用户的一一映射表，Down 为直接 DROP TABLE。
 - `000007_create_auth_sessions.up/down.sql`：新建会话和刷新凭证哈希表，无需回填；Down 删除两张表及其中所有会话。
+- `000008_create_companion_moods.up/down.sql`：创建关系内的心情快照表，无需回填；Down 删除表和其中所有心情快照。
 
 `000003` 不弃用也不删除原点击表。升级后可按明确指定的现有用户补 `target_user_id`，同时保持 `companion_binding_id = NULL`；这不会创建绑定信件。双方以后正常接受唯一一封真实邀请后，详细记录会按用户对呈现这些旧数据。
 
